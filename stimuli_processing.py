@@ -1,7 +1,5 @@
 import os
 import shutil
-from base64 import urlsafe_b64encode
-
 import numpy as np
 import pandas as pd
 
@@ -64,5 +62,18 @@ print(f'Total number of non-nature stimuli: {len(os.listdir(non_nature_stimuli_p
 print(f'Total number of edge stimuli: {len(os.listdir(edge_stimuli_path))}')
 
 # ======================================================================================================================
+# Check the file names
+# ======================================================================================================================
+# Check the file names
+nature_names = []
+non_nature_names = []
+edge_names = []
+for file in os.listdir(nature_stimuli_path):
+    nature_names.append(file)
+for file in os.listdir(non_nature_stimuli_path):
+    non_nature_names.append(file)
+for file in os.listdir(edge_stimuli_path):
+    edge_names.append(file)
+
 
 
