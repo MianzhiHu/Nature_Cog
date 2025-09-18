@@ -8,12 +8,13 @@ from utils.Between_Subj_Preprocessing_Zip import process_participant_data, deter
 # ======================================================================================================================
 all_participants_dfs = []
 i = 0
-main_folder_directory = ['./data/Data_25Spring/', './data/Data_25Summer/']
+SGT_IGT_folder_directory = ['./data/Data_25Spring/', './data/Data_25Summer/', './data/Data_25Fall/']
+IGT_SGT_folder_directory = ['./data/Data_Reversed/']
 behavioral_list = ['React', 'Reward', 'keyResponse', 'Trial', 'Bank']
 stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
 
 # Iterate over each subfolder in the main folder
-for directory in main_folder_directory:
+for directory in SGT_IGT_folder_directory:
     for participant_folder_name in os.listdir(directory):
         print(f'Processing participant: {i + 1}')
         i += 1
@@ -25,6 +26,23 @@ for directory in main_folder_directory:
             # Process the participant folder and collect the DataFrame
             participant_df = process_participant_data(participant_folder_path, 1, 3, 2)
             participant_df['Subnum'] = i
+            participant_df['Order'] = 'SGT_IGT'
+            all_participants_dfs.append(participant_df)
+
+# Now process the reversed order
+for directory in IGT_SGT_folder_directory:
+    for participant_folder_name in os.listdir(directory):
+        print(f'Processing participant: {i + 1}')
+        i += 1
+
+        participant_folder_path = os.path.join(directory, participant_folder_name)
+
+        # Check if this path is indeed a folder
+        if os.path.isdir(participant_folder_path):
+            # Process the participant folder and collect the DataFrame
+            participant_df = process_participant_data(participant_folder_path, 3, 1, 2)
+            participant_df['Subnum'] = i
+            participant_df['Order'] = 'IGT_SGT'
             all_participants_dfs.append(participant_df)
 
 # Drop the dfs that are empty
@@ -52,8 +70,19 @@ for col_name in ['Condition', 'Task', 'Subnum']:
     col = all_data.pop(col_name)
     all_data.insert(0, col_name, col)
 
+#
+conditions = [
+    (all_data["Order"] == "IGT_SGT") & (all_data["Task"] == "IGT"),
+    (all_data["Order"] == "IGT_SGT") & (all_data["Task"] == "SGT"),
+    (all_data["Order"] == "SGT_IGT") & (all_data["Task"] == "IGT"),
+    (all_data["Order"] == "SGT_IGT") & (all_data["Task"] == "SGT"),
+]
+task_labels = [1, 2, 2, 1]
+all_data['TaskCode'] = np.select(conditions, task_labels, default=np.nan)
+
 print(f'Currently, the total number of participants is {all_data["Subnum"].nunique()}')
-print(f'Conditions: {all_data["Condition"].value_counts() // 250}')
+print(f'[SGT-IGT] Conditions: {all_data[all_data["Order"] == "SGT_IGT"]["Condition"].value_counts() // 250} in SGT_IGT order')
+print(f'[IGT-SGT] Conditions: {all_data[all_data["Order"] == "IGT_SGT"]["Condition"].value_counts() // 250} in IGT_SGT order')
 
 # Save the data
 img_data = all_data[all_data['Task'] == 'ImageRating'].dropna(axis=1, how='all')
@@ -88,7 +117,21 @@ avg_rating.to_csv('./data/avg_rating.csv')
 # Add stimuli information to the dm data
 dm_data = dm_data.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
 
+# Detect inattentive participants
+deck_counts = dm_data.groupby(['Subnum', 'Task'])['keyResponse'].nunique().reset_index()
+deck_counts = deck_counts[deck_counts['keyResponse'] < 4]
+all_data = all_data[~all_data['Subnum'].isin(deck_counts['Subnum'])]
+dm_data = dm_data[~dm_data['Subnum'].isin(deck_counts['Subnum'])]
+dm_1a = dm_data[dm_data['Order'] == 'SGT_IGT']
+dm_1b = dm_data[dm_data['Order'] == 'IGT_SGT']
+img_data = img_data[~img_data['Subnum'].isin(deck_counts['Subnum'])]
+print(f'After removing {deck_counts["Subnum"].nunique()} inattentive participants, the total number of participants is {all_data["Subnum"].nunique()}')
+print(f'[SGT-IGT] Conditions: {all_data[all_data["Order"] == "SGT_IGT"]["Condition"].value_counts() // 250} in SGT_IGT order')
+print(f'[IGT-SGT] Conditions: {all_data[all_data["Order"] == "IGT_SGT"]["Condition"].value_counts() // 250} in IGT_SGT order')
+
 # Save the data
 all_data.to_csv('./data/all_data.csv', index=False)
 img_data.to_csv('./data/img_data.csv', index=False)
 dm_data.to_csv('./data/dm_data.csv', index=False)
+dm_1a.to_csv('./data/dm_1a.csv', index=False)
+dm_1b.to_csv('./data/dm_1b.csv', index=False)

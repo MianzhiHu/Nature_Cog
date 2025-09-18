@@ -1,0 +1,1 @@
+{"Gender":"{\"Q0\":\"Female\"}","Ethnicity":"{\"Q0\":\"Not Hispanic or Latino\"}","Race":"{\"Q0\":\"More than one Race\"}","Age":"{\"Q0\":\"19\"}"}

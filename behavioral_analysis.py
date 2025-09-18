@@ -14,6 +14,9 @@ stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
 avg_rating = pd.read_csv('./data/avg_rating.csv')
 
 dm_data['Condition'] = pd.Categorical(dm_data['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+task_2nd = dm_data[dm_data['TaskCode'] == 2]
+print(f'The number of participants who did SGT second: {task_2nd["Subnum"].nunique()}')
+print(f'Conditions in SGT second: {task_2nd["Condition"].value_counts() // 250}')
 
 # ======================================================================================================================
 # Statistical Analysis
@@ -28,20 +31,19 @@ dm_summary_IGT = dm_summary[dm_summary['Task'] == 'IGT']
 dm_summary_SGT = dm_summary[dm_summary['Task'] == 'SGT']
 dm_summary_IGT.to_csv('./data/dm_summary_IGT.csv')
 
-# Calculate deck C and D selections
-deck_cd_data = dm_data[dm_data['Task'] == 'IGT'].groupby(['Subnum', 'Condition'], observed=False).agg({
-    'keyResponse': lambda x: [(x == 3).mean(), (x == 4).mean()]
-}).reset_index()
-deck_cd_data = deck_cd_data.dropna()
-deck_cd_data[['DeckC', 'DeckD']] = pd.DataFrame(deck_cd_data['keyResponse'].tolist(), index=deck_cd_data.index)
-deck_cd_data = deck_cd_data.drop('keyResponse', axis=1)
+# Summary for overall performance
+overall_summary = dm_data.groupby(['Subnum', 'Condition', 'Task'], observed=False).agg({
+    'BestOption': 'mean',
+    'HighFreqOption': 'mean',
+}).dropna().reset_index()
+overall_summary = overall_summary.pivot_table(index=['Subnum', 'Condition'], columns='Task', values=['BestOption', 'HighFreqOption'])
+overall_summary.columns = ['_'.join(col).strip() for col in overall_summary.columns.values]
+overall_summary = overall_summary.reset_index()
+overall_summary.to_csv('./data/dm_summary_overall.csv', index=False)
 
-deck_ab_data = dm_data[dm_data['Task'] == 'IGT'].groupby(['Subnum', 'Condition'], observed=False).agg({
-    'keyResponse': lambda x: [(x == 1).mean(), (x == 2).mean()]
-}).reset_index()
-deck_ab_data = deck_ab_data.dropna()
-deck_ab_data[['DeckA', 'DeckB']] = pd.DataFrame(deck_ab_data['keyResponse'].tolist(), index=deck_ab_data.index)
-deck_ab_data = deck_ab_data.drop('keyResponse', axis=1)
+# Calculate deck selection proportions
+deck_counts = task_2nd.groupby(['Subnum', 'Condition', 'Task', 'keyResponse'], observed=True).size().reset_index(name='counts')
+deck_counts['proportion'] = deck_counts['counts'] / 100
 
 img_rating_summary = img_data.groupby(['image_name', 'Condition']).agg({
     'naturalness': 'mean',
@@ -79,7 +81,7 @@ plt.show()
 
 # Create the plot
 plt.figure(figsize=(10, 6))
-sns.lineplot(data=dm_data, x='Block', y='BestOption', hue='Condition', errorbar='ci')
+sns.lineplot(data=task_2nd, x='Block', y='BestOption', hue='Condition', errorbar='ci')
 plt.xlabel('Block Number')
 plt.ylabel('Proportion of Best Option Selected')
 plt.xticks(np.arange(0, 20, 2))
@@ -90,55 +92,53 @@ plt.savefig('./figures/BestOptionByBlock.png', dpi=600)
 plt.show()
 
 # Create another figure by condition only
-igt_data = dm_data[dm_data['Task'] == 'IGT']
-igt_summary = igt_data.groupby(['Subnum'], observed=False).agg({
+task_2nd_summary = task_2nd.groupby(['Subnum'], observed=False).agg({
     'Condition': 'first',
+    'Task': 'first',
     'BestOption': 'mean',
     'HighFreqOption': 'mean'
 }).reset_index()
 
-#
 
 plt.figure(figsize=(10, 6))
-sns.barplot(data=igt_summary, x='Condition', y='BestOption', hue='Condition', errorbar='se', palette=sns.color_palette())
+sns.barplot(data=task_2nd_summary, x='Condition', y='BestOption', hue='Condition', errorbar='se', palette=sns.color_palette())
 plt.xlabel('')
 plt.ylabel('Proportion of Best Option Selected')
 sns.despine()
 plt.savefig('./figures/BestOptionByCondition.png', dpi=600)
 plt.show()
 
+plt.figure(figsize=(10, 6))
+sns.barplot(data=task_2nd_summary, x='Condition', y='HighFreqOption', hue='Condition', errorbar='se', palette=sns.color_palette())
+plt.xlabel('')
+plt.ylabel('Proportion of High Frequency Option Selected')
+sns.despine()
+plt.savefig('./figures/HighFreqOptionByCondition.png', dpi=600)
+plt.show()
+
+# Best option
+g = sns.catplot(data=task_2nd_summary, x='Condition', y='BestOption', hue='Condition', col='Task', errorbar='se', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+g.set_titles('{col_name}')
+g.despine()
+plt.savefig('./figures/BestOptionByCondition_Task.png', dpi=600)
+plt.show()
+
 # High frequency option
-plt.figure(figsize=(10, 6))
-sns.lineplot(data=dm_data, x='Block', y='HighFreqOption', hue='Condition', errorbar='ci')
-plt.title('Best Option Selection by Block and Condition')
-plt.xlabel('Block Number')
-plt.ylabel('Proportion of Best Option Selected')
-plt.xticks(np.arange(0, 20, 2))
-plt.savefig('./figures/HighFreqOptionByBlock.png', dpi=300)
+g = sns.catplot(data=task_2nd_summary, x='Condition', y='HighFreqOption', hue='Condition', col='Task', errorbar='se', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion of High Frequency Option Selected')
+g.set_titles('{col_name}')
+g.despine()
+plt.savefig('./figures/HighFreqOptionByCondition_Task.png', dpi=600)
 plt.show()
 
-# Plot deck C and D selections
-plt.figure(figsize=(10, 6))
-deck_cd_melted = pd.melt(deck_cd_data, id_vars=['Subnum', 'Condition'],
-                         value_vars=['DeckC', 'DeckD'],
-                         var_name='Deck', value_name='Proportion')
-sns.barplot(data=deck_cd_melted, x='Condition', y='Proportion', hue='Deck', errorbar='se')
-plt.xlabel('Condition')
-plt.ylabel('Proportion Selected')
-plt.title('Deck C and D Selection by Condition')
-sns.despine()
-plt.savefig('./figures/DeckCD_Selection.png', dpi=600)
+# Plot deck selections
+g = sns.catplot(data=deck_counts, x='Condition', y='proportion', hue='keyResponse', col='Task', errorbar='ci', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion Selected')
+g.set_titles('{col_name}')
+g.despine()
+plt.savefig('./figures/Deck_Selection_byTask.png', dpi=600)
 plt.show()
-
-plt.figure(figsize=(10, 6))
-deck_ab_melted = pd.melt(deck_ab_data, id_vars=['Subnum', 'Condition'],
-                         value_vars=['DeckA', 'DeckB'],
-                         var_name='Deck', value_name='Proportion')
-sns.barplot(data=deck_ab_melted, x='Condition', y='Proportion', hue='Deck', errorbar='se')
-plt.xlabel('Condition')
-plt.ylabel('Proportion Selected')
-plt.title('Deck A and B Selection by Condition')
-sns.despine()
-plt.savefig('./figures/DeckAB_Selection.png', dpi=600)
-plt.show()
-

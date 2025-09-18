@@ -17,12 +17,16 @@ dm_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_data.csv"
 delta <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Delta_Results.csv")
 decay <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Decay_Results.csv")
 igt_summary <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_IGT.csv")
+dm_summary_overall <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_overall.csv")
 
 # Possible levels: ('Nature', 'Urban', 'Control') or ('Urban', 'Nature', 'Control')
 delta$Condition <- factor(delta$Condition, levels = c('Nature', 'Urban', 'Control'))
 decay$Condition <- factor(decay$Condition, levels = c('Nature', 'Urban', 'Control'))
 dm_data$Condition <- factor(dm_data$Condition, levels = c('Nature', 'Urban', 'Control')) 
 igt_summary$Condition <- factor(igt_summary$Condition, levels = c('Nature', 'Urban', 'Control'))
+dm_summary_overall$Condition <- factor(dm_summary_overall$Condition, levels = c('Nature', 'Urban', 'Control'))
+
+
 delta_nature <- delta %>%
   filter(Condition=='Nature')
 
@@ -57,6 +61,19 @@ summary(mixed_effect)
 anova(mixed_effect)
 p <- plot_model(mixed_effect,type  = "pred", 
            terms = c("window_id [all]", "Condition"))
+p + geom_vline(xintercept = 91, linetype = "dotted")
+
+# Basic behavioral;
+model <- glm(HighFreqOption_IGT ~ Condition + HighFreqOption_SGT,
+                     data = dm_summary_overall)
+
+summary(model)
+plot(allEffects(model))
+
+
+anova(mixed_effect)
+p <- plot_model(mixed_effect,type  = "pred", 
+                terms = c("window_id [all]", "Condition"))
 p + geom_vline(xintercept = 91, linetype = "dotted")
 
 # ==============================================================================
