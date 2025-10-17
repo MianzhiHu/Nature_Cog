@@ -9,7 +9,7 @@ from utils.Between_Subj_Preprocessing_Zip import process_participant_data, deter
 all_participants_dfs = []
 i = 0
 SGT_IGT_folder_directory = ['./data/Data_25Spring/', './data/Data_25Summer/', './data/Data_25Fall/']
-IGT_SGT_folder_directory = ['./data/Data_Reversed/']
+IGT_SGT_folder_directory = ['./data/Data_SGT_IGT/']
 behavioral_list = ['React', 'Reward', 'keyResponse', 'Trial', 'Bank']
 stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
 

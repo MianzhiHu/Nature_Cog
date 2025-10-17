@@ -21,10 +21,10 @@ print(f'Conditions in SGT second: {task_2nd["Condition"].value_counts() // 250}'
 # ======================================================================================================================
 # Statistical Analysis
 # ======================================================================================================================
-dm_summary = dm_data.groupby(['Subnum', 'Condition', 'Task', 'Block']).agg({
+dm_summary = dm_data.groupby(['Subnum', 'Condition', 'Task', 'Order', 'TaskCode', 'Block'], observed=False).agg({
     'BestOption': 'mean',
     'HighFreqOption': 'mean'
-}).reset_index()
+}).dropna().reset_index()
 dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
 dm_summary = dm_summary.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
 dm_summary_IGT = dm_summary[dm_summary['Task'] == 'IGT']
@@ -32,11 +32,30 @@ dm_summary_SGT = dm_summary[dm_summary['Task'] == 'SGT']
 dm_summary_IGT.to_csv('./data/dm_summary_IGT.csv')
 
 # Summary for overall performance
-overall_summary = dm_data.groupby(['Subnum', 'Condition', 'Task'], observed=False).agg({
+overall_summary = dm_data.groupby(['Subnum', 'Condition', 'Task', 'Order'], observed=False).agg({
     'BestOption': 'mean',
     'HighFreqOption': 'mean',
 }).dropna().reset_index()
-overall_summary = overall_summary.pivot_table(index=['Subnum', 'Condition'], columns='Task', values=['BestOption', 'HighFreqOption'])
+print(overall_summary.groupby('Order')['Subnum'].nunique())
+
+# select only SGT second
+SGT_IGT = overall_summary[(overall_summary['Order'] == 'SGT_IGT') & (overall_summary['Task'] == 'IGT')]
+IGT_SGT = overall_summary[(overall_summary['Order'] == 'IGT_SGT') & (overall_summary['Task'] == 'SGT')]
+# ANOVA for IGT when SGT is second
+aov_SGT_IGT = pg.anova(dv='BestOption', between='Condition', data=SGT_IGT, detailed=True)
+aov_IGT_SGT = pg.anova(dv='BestOption', between='Condition', data=IGT_SGT, detailed=True)
+print(aov_SGT_IGT)
+print(aov_IGT_SGT)
+# print means
+print(SGT_IGT.groupby('Condition')['BestOption'].mean())
+print(IGT_SGT.groupby('Condition')['BestOption'].mean())
+# pairwise t-tests
+pairwise_IGT_SGT2 = pg.pairwise_ttests(dv='BestOption', between='Condition', data=SGT_IGT, padjust='bonferroni')
+print(pairwise_IGT_SGT2)
+
+IGT_SGT = overall_summary[(overall_summary['Order'] == 'IGT_SGT') & (overall_summary['Task'] == 'SGT')]
+
+overall_summary = overall_summary.pivot_table(index=['Subnum', 'Condition', 'Order'], columns='Task', values=['BestOption', 'HighFreqOption'])
 overall_summary.columns = ['_'.join(col).strip() for col in overall_summary.columns.values]
 overall_summary = overall_summary.reset_index()
 overall_summary.to_csv('./data/dm_summary_overall.csv', index=False)

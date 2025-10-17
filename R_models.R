@@ -14,6 +14,7 @@ library(changepoint)
 # Read the data
 # ==============================================================================
 dm_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_data.csv")
+
 delta <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Delta_Results.csv")
 decay <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Decay_Results.csv")
 igt_summary <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_IGT.csv")
@@ -126,4 +127,34 @@ summary(model)
 
 model <- lmer(t ~ Condition + window_id + (1|Subnum), data = delta_igt)
 summary(model)
+
+# ==============================================================================
+# Random
+igt_sgt <- dm_data %>%
+  filter(Task == 'SGT') %>%
+  filter(Order == 'IGT_SGT')
+
+sgt_igt <- dm_data %>%
+  filter(Task == 'IGT') %>%
+  filter(Order == 'SGT_IGT')
+
+sgt_2nd <- dm_summary_overall %>%
+  filter(Order == 'SGT_IGT')
+
+
+model <- glm(BestOption ~ Condition + (1|Subnum), data = igt_sgt)
+summary(model)
+plot(allEffects(model))
+
+model <- lmer(BestOption ~ Condition + (1|Subnum), data = sgt_igt)
+summary(model)
+plot(allEffects(model))
+
+model <- glm(BestOption_IGT ~ Condition + BestOption_SGT, data = sgt_2nd)
+summary(model)
+plot(allEffects(model))
+
+model <- lmer(HighFreqOption ~ Condition + (1|Subnum), data = dm_data)
+summary(model)
+plot(allEffects(model))
 
