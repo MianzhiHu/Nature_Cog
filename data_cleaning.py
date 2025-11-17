@@ -1,21 +1,100 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 import os
+import json
 from utils.Between_Subj_Preprocessing_Zip import process_participant_data, determine_condition
+
+
+def parse_d_hms(t):
+    """
+    Parse strings like '2:01:09:11' meaning D:HH:MM:SS.
+    If format is shorter (e.g. HH:MM:SS), it still works.
+    """
+    parts = t.split(":")
+    parts = list(map(int, parts))
+
+    if len(parts) == 4:
+        days, hours, minutes, seconds = parts
+    elif len(parts) == 3:
+        # HH:MM:SS
+        days = 0
+        hours, minutes, seconds = parts
+    else:
+        raise ValueError(f"Unrecognized duration format: {t}")
+
+    return pd.Timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
 
 # ======================================================================================================================
 # Load the data
 # ======================================================================================================================
 all_participants_dfs = []
 i = 0
-SGT_IGT_folder_directory = ['./data/Data_25Spring/', './data/Data_25Summer/', './data/Data_25Fall/']
-IGT_SGT_folder_directory = ['./data/Data_SGT_IGT/']
+SGT_IGT_folder_directory = ['./data/Data_SGT_IGT']
+IGT_SGT_folder_directory = ['./data/Data_IGT_SGT']
 behavioral_list = ['React', 'Reward', 'keyResponse', 'Trial', 'Bank']
-stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
+# stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
+stimuli_info = pd.read_csv('./stimuli/visual_features_extracted.csv')
+
+# read json metadata
+with open('./data/jatos_results_metadata_20251115142907.json', 'r') as f:
+    metadata = json.load(f)
+
+metadata = metadata['data'][0]['studyResults']
+
+# for each participant, get their result ID and duration
+result_ids = []
+total_duration = []
+duration_img = []
+duration_2nd_task = []
+for participant in metadata:
+    result_ids.append(participant['id'])
+    total_duration.append(participant['duration'])
+    duration_img.append(participant['componentResults'][3]['duration'])
+    duration_2nd_task.append(participant['componentResults'][4]['duration'])
+
+metadata_duration = pd.DataFrame({
+    'Result ID': result_ids,
+    'Duration': total_duration,
+    'Duration_ImageRating': duration_img,
+    'Duration_2ndTask': duration_2nd_task
+})
+
+metadata_duration['Duration'] = metadata_duration['Duration'].apply(parse_d_hms)
+metadata_duration['Duration_ImageRating'] = metadata_duration['Duration_ImageRating'].apply(parse_d_hms)
+metadata_duration['Duration_2ndTask'] = metadata_duration['Duration_2ndTask'].apply(parse_d_hms)
+metadata_duration['Duration_combined'] = metadata_duration['Duration_ImageRating'] + metadata_duration['Duration_2ndTask']
+
+# First, remove all durations that are more than 1 hour
+metadata_duration = metadata_duration[metadata_duration['Duration_combined'] < pd.Timedelta(hours=1)]
+duration_mean = metadata_duration['Duration_combined'].mean()
+duration_std = metadata_duration['Duration_combined'].std()
+print(f'Maximum combined duration of Image Rating and 2nd Task is {metadata_duration["Duration_combined"].max()}.')
+print(f'Average combined duration of Image Rating and 2nd Task is {duration_mean} with a std of {duration_std}.')
+# Next, remove all durations that are more or less than 3 standard deviations from the mean
+metadata_duration = metadata_duration[(metadata_duration['Duration_combined'] > duration_mean - 3 * duration_std) &
+                                    (metadata_duration['Duration_combined'] < duration_mean + 3 * duration_std)]
+
+# Plot the distribution of durations
+plt.figure()
+sns.histplot(metadata_duration['Duration_combined'].dt.total_seconds() / 60, bins=30, kde=True)
+plt.title('Distribution of Task Duration')
+plt.xlabel('Duration (minutes)')
+plt.ylabel('Number of Participants')
+sns.despine()
+plt.savefig('./figures/Task_Duration_Distribution.png', dpi=600)
+plt.close()
 
 # Iterate over each subfolder in the main folder
 for directory in SGT_IGT_folder_directory:
     for participant_folder_name in os.listdir(directory):
+        # if the participant is not in the metadata, skip
+        result_id = int(participant_folder_name.split('_')[2])
+        if result_id not in metadata_duration['Result ID'].values:
+            print(f'Skipping participant: {participant_folder_name} as they are not in the metadata.')
+            continue
+
         print(f'Processing participant: {i + 1}')
         i += 1
 
@@ -23,6 +102,10 @@ for directory in SGT_IGT_folder_directory:
 
         # Check if this path is indeed a folder
         if os.path.isdir(participant_folder_path):
+            num_folders = sum(os.path.isdir(os.path.join(participant_folder_path, name)) for name in os.listdir(participant_folder_path))
+            if num_folders != 6:
+                print(f'Participant {participant_folder_name} has {num_folders} folders, expected 6. Skipping.')
+                continue
             # Process the participant folder and collect the DataFrame
             participant_df = process_participant_data(participant_folder_path, 1, 3, 2)
             participant_df['Subnum'] = i
@@ -32,6 +115,12 @@ for directory in SGT_IGT_folder_directory:
 # Now process the reversed order
 for directory in IGT_SGT_folder_directory:
     for participant_folder_name in os.listdir(directory):
+        # if the participant is not in the metadata, skip
+        result_id = int(participant_folder_name.split('_')[2])
+        if result_id not in metadata_duration['Result ID'].values:
+            print(f'Skipping participant: {participant_folder_name} as they are not in the metadata.')
+            continue
+
         print(f'Processing participant: {i + 1}')
         i += 1
 
@@ -39,6 +128,10 @@ for directory in IGT_SGT_folder_directory:
 
         # Check if this path is indeed a folder
         if os.path.isdir(participant_folder_path):
+            num_folders = sum(os.path.isdir(os.path.join(participant_folder_path, name)) for name in os.listdir(participant_folder_path))
+            if num_folders != 6:
+                print(f'Participant {participant_folder_name} has {num_folders} folders, expected 6. Skipping.')
+                continue
             # Process the participant folder and collect the DataFrame
             participant_df = process_participant_data(participant_folder_path, 3, 1, 2)
             participant_df['Subnum'] = i
@@ -52,7 +145,8 @@ all_participants_dfs = [df for df in all_participants_dfs if not df.empty]
 all_data = pd.concat(all_participants_dfs, ignore_index=True)
 
 # Insert a block number column with offset for later tasks
-block_offset = np.where(all_data['Task'] == 'IGT', 10, 0)  # Add 10 to IGT blocks
+block_offset = np.where((all_data['Task'] == 'IGT') & (all_data['Order'] == 'SGT_IGT'), 10, 0)
+block_offset += np.where((all_data['Task'] == 'SGT') & (all_data['Order'] == 'IGT_SGT'), 10, 0)
 all_data['Block'] = np.ceil(all_data['Trial'] / 10) + block_offset
 
 # Detect the image rating task condition
@@ -64,6 +158,8 @@ all_data['Condition'] = all_data['Subnum'].map(img_conditions)
 all_data['BestOption'] = all_data['keyResponse'].isin([3, 4]).astype(int)
 all_data['HighFreqOption'] = ((all_data['Task'] == 'IGT') & all_data['keyResponse'].isin([2, 4]) |
                               (all_data['Task'] == 'SGT') & all_data['keyResponse'].isin([1, 2])).astype(int)
+all_data['HighMagOption'] = ((all_data['Task'] == 'IGT') & all_data['keyResponse'].isin([1, 2]) |
+                             (all_data['Task'] == 'SGT') & all_data['keyResponse'].isin([1, 3])).astype(int)
 
 # Move the subject number and task columns to the front
 for col_name in ['Condition', 'Task', 'Subnum']:
@@ -91,26 +187,46 @@ dm_data = all_data[all_data['Task'] != 'ImageRating'].dropna(axis=1, how='all')
 # Process stimuli information
 stimuli_info.rename(columns={'ImageName': 'image_name'}, inplace=True)
 img_data = img_data.merge(stimuli_info, on='image_name', how='left')
+#
+# # Find participants who rated all images the same
+# n_unique_nat = img_data.groupby('Subnum')['naturalness'].nunique()
+# n_unique_dis = img_data.groupby('Subnum')['disorderliness'].nunique()
+# n_unique_aes = img_data.groupby('Subnum')['aesthetic'].nunique()
+# constant_raters = n_unique_nat[(n_unique_nat == 1) | (n_unique_dis == 1) | (n_unique_aes == 1)].index.tolist()
+#
+# img_data = img_data[~img_data['Subnum'].isin(constant_raters)]
+# print(f'Removed {len(constant_raters)} participants who rated all images the samely')
+
 avg_rating = img_data.groupby(['Subnum']).agg({
     'Condition': 'first',
     'naturalness': 'mean',
     'disorderliness': 'mean',
     'aesthetic': 'mean',
-    'Hue': 'mean',
-    'Bright': 'mean',
-    'Saturaton': 'mean',
-    'SDhue': 'mean',
-    'SDsat': 'mean',
-    'Sdbright': 'mean',
-    'Entropy': 'mean',
-    'Perc_Nat': 'mean',
-    'pc1f': 'mean',
-    'pc2f': 'mean',
-    'pc3f': 'mean',
-    'pc4f': 'mean',
-    'SED': 'mean',
-    'total_ED': 'mean',
-    'NSED': 'mean'
+    "Hue": 'mean',
+    "SDHue": 'mean',
+    "Bright": 'mean',
+    "SDBright": 'mean',
+    "Saturaton": 'mean',
+    "SDSat": 'mean',
+    "Entropy": 'mean',
+    "EdgeCount": 'mean',
+    "CornerMean": 'mean',
+    "CornerSD": 'mean',
+    "CornerCount": 'mean',
+    "ContourMeanLength": 'mean',
+    "ContourSDLength": 'mean',
+    "ContourMeanArea": 'mean',
+    "ContourSDArea": 'mean',
+    "ContourCount": 'mean',
+    "AsymmetryV": 'mean',
+    "AsymmetryH": 'mean',
+    "KPMeanSize": 'mean',
+    "KPSDSize": 'mean',
+    "KPMeanStrength": 'mean',
+    "KPSDStrength": 'mean',
+    "KPMeanAngle": 'mean',
+    "KPSDAngle": 'mean',
+    "KPCount": 'mean'
 }).reset_index()
 avg_rating.to_csv('./data/avg_rating.csv')
 
@@ -120,6 +236,11 @@ dm_data = dm_data.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
 # Detect inattentive participants
 deck_counts = dm_data.groupby(['Subnum', 'Task'])['keyResponse'].nunique().reset_index()
 deck_counts = deck_counts[deck_counts['keyResponse'] < 4]
+
+# # get all participants who should be removed by combining constant raters and deck counts
+# deck_counts = deck_counts[['Subnum']].drop_duplicates()
+# deck_counts = pd.concat([deck_counts, pd.DataFrame({'Subnum': constant_raters})], ignore_index=True).drop_duplicates()
+
 all_data = all_data[~all_data['Subnum'].isin(deck_counts['Subnum'])]
 dm_data = dm_data[~dm_data['Subnum'].isin(deck_counts['Subnum'])]
 dm_1a = dm_data[dm_data['Order'] == 'SGT_IGT']

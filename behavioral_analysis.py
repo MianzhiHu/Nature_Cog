@@ -4,6 +4,7 @@ import pingouin as pg
 from statsmodels.formula.api import ols
 import matplotlib.pyplot as plt
 import seaborn as sns
+import functools
 
 # ======================================================================================================================
 # Load the data
@@ -12,57 +13,145 @@ dm_data = pd.read_csv('./data/dm_data.csv')
 img_data = pd.read_csv('./data/img_data.csv')
 stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
 avg_rating = pd.read_csv('./data/avg_rating.csv')
+IGT_SGT = dm_data[dm_data['Order'] == 'IGT_SGT'].copy()
 
 dm_data['Condition'] = pd.Categorical(dm_data['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+task_1st = dm_data[dm_data['TaskCode'] == 1]
 task_2nd = dm_data[dm_data['TaskCode'] == 2]
-print(f'The number of participants who did SGT second: {task_2nd["Subnum"].nunique()}')
-print(f'Conditions in SGT second: {task_2nd["Condition"].value_counts() // 250}')
+print(f'The number of participants: {dm_data.groupby('Order')['Subnum'].nunique().to_dict()}')
+
+def z_score(x):
+    return (x - x.mean()) / x.std()
 
 # ======================================================================================================================
-# Statistical Analysis
+# Overall Summary
 # ======================================================================================================================
-dm_summary = dm_data.groupby(['Subnum', 'Condition', 'Task', 'Order', 'TaskCode', 'Block'], observed=False).agg({
+dm_summary = dm_data.groupby(['Subnum', 'Condition', 'Task', 'Order', 'TaskCode'], observed=False).agg({
     'BestOption': 'mean',
-    'HighFreqOption': 'mean'
+    'HighFreqOption': 'mean',
+    'HighMagOption': 'mean'
 }).dropna().reset_index()
 dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
 dm_summary = dm_summary.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
-dm_summary_IGT = dm_summary[dm_summary['Task'] == 'IGT']
-dm_summary_SGT = dm_summary[dm_summary['Task'] == 'SGT']
-dm_summary_IGT.to_csv('./data/dm_summary_IGT.csv')
 
-# Summary for overall performance
-overall_summary = dm_data.groupby(['Subnum', 'Condition', 'Task', 'Order'], observed=False).agg({
-    'BestOption': 'mean',
-    'HighFreqOption': 'mean',
-}).dropna().reset_index()
-print(overall_summary.groupby('Order')['Subnum'].nunique())
+# Calculate optimality scores as (good choices - bad choices)
+for metric in ['BestOption', 'HighFreqOption', 'HighMagOption']:
+    dm_summary[f'{metric}_Optim'] = dm_summary[metric] - (1 - dm_summary[metric])
 
-# select only SGT second
-SGT_IGT = overall_summary[(overall_summary['Order'] == 'SGT_IGT') & (overall_summary['Task'] == 'IGT')]
-IGT_SGT = overall_summary[(overall_summary['Order'] == 'IGT_SGT') & (overall_summary['Task'] == 'SGT')]
-# ANOVA for IGT when SGT is second
-aov_SGT_IGT = pg.anova(dv='BestOption', between='Condition', data=SGT_IGT, detailed=True)
-aov_IGT_SGT = pg.anova(dv='BestOption', between='Condition', data=IGT_SGT, detailed=True)
-print(aov_SGT_IGT)
-print(aov_IGT_SGT)
-# print means
-print(SGT_IGT.groupby('Condition')['BestOption'].mean())
-print(IGT_SGT.groupby('Condition')['BestOption'].mean())
-# pairwise t-tests
-pairwise_IGT_SGT2 = pg.pairwise_ttests(dv='BestOption', between='Condition', data=SGT_IGT, padjust='bonferroni')
-print(pairwise_IGT_SGT2)
+# Calculate z-scores grouped by task
+for col in ['BestOption', 'HighFreqOption', 'HighMagOption', 'BestOption_Optim', 'HighFreqOption_Optim', 'HighMagOption_Optim']:
+    dm_summary[f'{col}_z'] = dm_summary.groupby('Task')[col].transform(z_score)
 
-IGT_SGT = overall_summary[(overall_summary['Order'] == 'IGT_SGT') & (overall_summary['Task'] == 'SGT')]
+# pivot to wide format
+all_metrics = ['BestOption', 'HighFreqOption', 'HighMagOption', 'BestOption_Optim', 'HighFreqOption_Optim',
+               'HighMagOption_Optim', 'BestOption_z', 'HighFreqOption_z', 'HighMagOption_z', 'BestOption_Optim_z',
+               'HighFreqOption_Optim_z', 'HighMagOption_Optim_z']
+dm_summary_task_wide = dm_summary.pivot_table(index=['Subnum', 'Condition', 'Order'], columns='Task', values=all_metrics)
+dm_summary_task_wide.columns = ['_'.join(col).strip() for col in dm_summary_task_wide.columns.values]
+dm_summary_task_wide = dm_summary_task_wide.reset_index()
 
-overall_summary = overall_summary.pivot_table(index=['Subnum', 'Condition', 'Order'], columns='Task', values=['BestOption', 'HighFreqOption'])
-overall_summary.columns = ['_'.join(col).strip() for col in overall_summary.columns.values]
-overall_summary = overall_summary.reset_index()
-overall_summary.to_csv('./data/dm_summary_overall.csv', index=False)
+# calculate the z score of the difference between tasks
+# if order is IGT_SGT, then SGT - IGT; if order is SGT_IGT, then IGT - SGT
+for metric in ['BestOption_z', 'HighFreqOption_z', 'HighMagOption_z', 'BestOption_Optim_z', 'HighFreqOption_Optim_z', 'HighMagOption_Optim_z']:
+    diff_col = f'{metric}_Diff'
+    dm_summary_task_wide[diff_col] = np.where(
+        dm_summary_task_wide['Order'] == 'IGT_SGT',
+        dm_summary_task_wide[f'{metric}_SGT'] - dm_summary_task_wide[f'{metric}_IGT'],
+        dm_summary_task_wide[f'{metric}_IGT'] - dm_summary_task_wide[f'{metric}_SGT']
+    )
+    # remove the mean difference
+    dm_summary_task_wide[f'{diff_col}_z'] = dm_summary_task_wide[diff_col].transform(z_score)
 
-# Calculate deck selection proportions
-deck_counts = task_2nd.groupby(['Subnum', 'Condition', 'Task', 'keyResponse'], observed=True).size().reset_index(name='counts')
-deck_counts['proportion'] = deck_counts['counts'] / 100
+dm_summary_task_wide.to_csv('./data/dm_summary_task_wide.csv', index=False)
+
+# now calculate deck selection proportions
+deck_summary = (dm_data.groupby(['Subnum', 'Condition', 'Task', 'Order', 'TaskCode'], observed=True)['keyResponse'].
+                             value_counts(normalize=True).rename('ChoiceRate').reset_index())
+# rename the deck names to Deck_A, Deck_B, etc.
+deck_summary['keyResponse'] = deck_summary['keyResponse'].replace({1: 'Deck_A', 2: 'Deck_B', 3: 'Deck_C', 4: 'Deck_D'})
+deck_summary['keyResponse'] = pd.Categorical(deck_summary['keyResponse'], categories=['Deck_A', 'Deck_B', 'Deck_C', 'Deck_D'], ordered=True)
+
+# calculate z-scores for choice rates
+deck_summary['ChoiceRate_z'] = deck_summary.groupby(['Task', 'keyResponse'], observed=False)['ChoiceRate'].transform(z_score)
+deck_summary.to_csv('./data/deck_summary.csv', index=False)
+deck_summary_task_wide = deck_summary.pivot_table(index=['Subnum', 'Condition', 'Order', 'Task'], columns=['keyResponse'],
+                                                  values=['ChoiceRate', 'ChoiceRate_z'], observed=True)
+deck_summary_task_wide.columns = [f'{task}_{deck}' for task, deck in deck_summary_task_wide.columns.to_flat_index()]
+dm_summary = pd.merge(dm_summary, deck_summary_task_wide, on=['Subnum', 'Condition', 'Task', 'Order'], how='left')
+dm_summary .to_csv('./data/dm_summary.csv', index=False)
+
+task_2nd_summary = dm_summary[dm_summary['TaskCode'] == 2].copy()
+
+# merge these two wide dataframes into dm_data
+dm_data_sum = functools.reduce(lambda left, right: pd.merge(left, right, on=['Subnum', 'Condition', 'Order'], how='left'),
+                            [dm_data, dm_summary_task_wide, deck_summary_task_wide])
+dm_data_sum.to_csv('./data/dm_data_summary.csv', index=False)
+
+# ======================================================================================================================
+# IGT-SGT Analysis
+# ======================================================================================================================
+# IGT_SGT_summary = dm_summary[dm_summary['Order'] == 'IGT_SGT'].copy()
+# IGT_SGT_summary = IGT_SGT_summary[IGT_SGT_summary['Task'] == 'SGT']
+# IGT_SGT_summary_baseline = dm_summary[(dm_summary['Order'] == 'SGT_IGT') & (dm_summary['Task'] == 'SGT')].copy()
+# IGT_SGT_summary_baseline['Condition'] = 'Baseline'
+# IGT_SGT_summary = pd.concat([IGT_SGT_summary, IGT_SGT_summary_baseline], ignore_index=True)
+IGT_SGT_summary = dm_data[dm_data['Order'] == 'SGT_IGT'].copy()
+IGT_SGT_summary = IGT_SGT_summary[IGT_SGT_summary['Task'] == 'IGT']
+IGT_SGT_summary_baseline = dm_data[(dm_data['Order'] == 'IGT_SGT') & (dm_data['Task'] == 'IGT')].copy()
+IGT_SGT_summary_baseline['Condition'] = 'Baseline'
+IGT_SGT_summary = pd.concat([IGT_SGT_summary, IGT_SGT_summary_baseline], ignore_index=True)
+IGT_SGT_summary.to_csv('./data/IGT_SGT_summary.csv', index=False)
+IGT_SGT_summary_wide = dm_summary_task_wide[dm_summary_task_wide['Order'] == 'IGT_SGT'].copy()
+dm_summary_modeled = pd.read_csv('./data/dm_summary_modeled.csv')
+dm_summary_modeled_wide = pd.read_csv('./data/dm_summary_modeled_wide.csv')
+print(IGT_SGT_summary_wide.shape)
+
+# one sample t-test on the difference scores
+p = []
+for con in ['Nature', 'Urban', 'Control']:
+    subset = IGT_SGT_summary_wide[IGT_SGT_summary_wide['Condition'] == con]
+    ttest_result = pg.ttest(subset['BestOption_z_Diff'], 0)
+    print(f'One-sample t-test for BestOption_z_Diff in {con} condition:')
+    print(f'Mean difference: {subset["BestOption_z_Diff"].mean():.4f}')
+    print(f't-statistic: {ttest_result["T"].values[0]:.4f}, p-value: {ttest_result["p-val"].values[0]:.4f}, n={len(subset)}')
+    p.append(ttest_result["p-val"].values[0])
+
+anova = pg.anova(dv='BestOption_z_Diff', between='Condition', data=IGT_SGT_summary_wide, detailed=True)
+pairwise = pg.pairwise_ttests(dv='BestOption_z_Diff', between='Condition', data=IGT_SGT_summary_wide, padjust='fdr_bh')
+print(anova)
+print(pairwise)
+
+# adjust p-values for multiple comparisons
+p_adjusted = pg.multicomp(pvals=p, method='fdr_bh')
+print(f'Adjusted p-values for one-sample t-tests: {p_adjusted[1]}')
+
+# Plot IGT-SGT results
+dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+g = sns.catplot(data=dm_summary, x='Condition', y='BestOption_z', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+g.set_titles('{col_name} - {row_name}')
+g.despine()
+plt.savefig('./figures/BestOptionByCondition_IGT_SGT.png', dpi=600)
+plt.show()
+
+g = sns.catplot(data=dm_summary_modeled, x='Condition', y='la_z', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+g.set_titles('{col_name} - {row_name}')
+g.despine()
+plt.savefig('./figures/tByCondition_IGT_SGT.png', dpi=600)
+plt.show()
+
+# difference
+g = sns.catplot(data=dm_summary_task_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', col='Order', errorbar='se', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+g.set_titles('{col_name}')
+g.despine()
+plt.savefig('./figures/within_subj_diff.png', dpi=600)
+plt.show()
+
 
 img_rating_summary = img_data.groupby(['image_name', 'Condition']).agg({
     'naturalness': 'mean',
@@ -110,42 +199,26 @@ sns.despine()
 plt.savefig('./figures/BestOptionByBlock.png', dpi=600)
 plt.show()
 
-# Create another figure by condition only
-task_2nd_summary = task_2nd.groupby(['Subnum'], observed=False).agg({
-    'Condition': 'first',
-    'Task': 'first',
-    'BestOption': 'mean',
-    'HighFreqOption': 'mean'
-}).reset_index()
-
-
-plt.figure(figsize=(10, 6))
-sns.barplot(data=task_2nd_summary, x='Condition', y='BestOption', hue='Condition', errorbar='se', palette=sns.color_palette())
-plt.xlabel('')
-plt.ylabel('Proportion of Best Option Selected')
-sns.despine()
-plt.savefig('./figures/BestOptionByCondition.png', dpi=600)
-plt.show()
-
-plt.figure(figsize=(10, 6))
-sns.barplot(data=task_2nd_summary, x='Condition', y='HighFreqOption', hue='Condition', errorbar='se', palette=sns.color_palette())
-plt.xlabel('')
-plt.ylabel('Proportion of High Frequency Option Selected')
-sns.despine()
-plt.savefig('./figures/HighFreqOptionByCondition.png', dpi=600)
-plt.show()
-
 # Best option
 g = sns.catplot(data=task_2nd_summary, x='Condition', y='BestOption', hue='Condition', col='Task', errorbar='se', kind='bar',
                 height=4, aspect=1.2)
 g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
 g.set_titles('{col_name}')
 g.despine()
-plt.savefig('./figures/BestOptionByCondition_Task.png', dpi=600)
+plt.savefig('./figures/BestOptionByCondition_Task_2nd.png', dpi=600)
+plt.show()
+
+# difference
+g = sns.catplot(data=dm_summary_task_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', col='Order', errorbar='se', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+g.set_titles('{col_name}')
+g.despine()
+plt.savefig('./figures/within_subj_diff.png', dpi=600)
 plt.show()
 
 # High frequency option
-g = sns.catplot(data=task_2nd_summary, x='Condition', y='HighFreqOption', hue='Condition', col='Task', errorbar='se', kind='bar',
+g = sns.catplot(data=dm_summary, x='Condition', y='BestOption', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
                 height=4, aspect=1.2)
 g.set_axis_labels('Condition', 'Proportion of High Frequency Option Selected')
 g.set_titles('{col_name}')
@@ -154,10 +227,14 @@ plt.savefig('./figures/HighFreqOptionByCondition_Task.png', dpi=600)
 plt.show()
 
 # Plot deck selections
-g = sns.catplot(data=deck_counts, x='Condition', y='proportion', hue='keyResponse', col='Task', errorbar='ci', kind='bar',
-                height=4, aspect=1.2)
+g = sns.catplot(data=deck_summary, x='Condition', y='ChoiceRate', hue='keyResponse', row='Task', col='Order',
+                errorbar='ci', kind='bar', height=5, aspect=1.2)
 g.set_axis_labels('Condition', 'Proportion Selected')
-g.set_titles('{col_name}')
+for ax, row_val in zip(g.axes[:,0], g.row_names):
+    ax.set_ylabel(f'Task: {row_val}', fontsize=20)
+for ax, col_val in zip(g.axes[0], g.col_names):
+    ax.set_title(f'Order: {col_val}', fontsize=20)
 g.despine()
+# plt.tight_layout()
 plt.savefig('./figures/Deck_Selection_byTask.png', dpi=600)
 plt.show()

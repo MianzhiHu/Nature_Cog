@@ -1,1 +1,0 @@
-{"Gender":"{\"Q0\":\"Female\"}","Ethnicity":"{\"Q0\":\"Not Hispanic or Latino\"}","Race":"{\"Q0\":\"American Indian or Alaskan Native\"}","Age":"{\"Q0\":\"18\"}"}
