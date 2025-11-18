@@ -39,9 +39,10 @@ delta_PVL = ComputationalModels('delta_PVL', task='IGT_SGT')
 decay_PVL = ComputationalModels('decay_PVL', task='IGT_SGT')
 delta_asymmetric = ComputationalModels('delta_asymmetric', task='IGT_SGT')
 decay_PVPE = ComputationalModels('decay_PVPE', task='IGT_SGT')
+decay_win = ComputationalModels('decay_win', task='IGT_SGT')
 # dual_process = DualProcessModel(num_trials=100, task='IGT_SGT', default_EV=0.0)
 
-model_list = [decay_PVL]
+model_list = [delta, decay, delta_PVL, decay_PVL, delta_asymmetric, decay_PVPE, decay_win]
 model_name_list = [name for name, obj in globals().items() if any(obj is m for m in model_list)]
 
 # Set window parameters
@@ -49,12 +50,12 @@ window_size = 10
 n_iterations = 100
 
 if __name__== '__main__':
-    # # Fit SGT data overall
-    # for i, model in enumerate(model_list):
-    #     SGT_result = model.fit(SGT_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha', num_exp_restart=100)
-    #     SGT_result.to_csv(f'./data/Model/SGT_{model_name_list[i]}.csv', index=False)
-    #     IGT_result = model.fit(IGT_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha', num_exp_restart=100)
-    #     IGT_result.to_csv(f'./data/Model/IGT_{model_name_list[i]}.csv', index=False)
+    # Fit SGT data overall
+    for i, model in enumerate(model_list):
+        SGT_result = model.fit(SGT_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha', num_exp_restart=100)
+        SGT_result.to_csv(f'./data/Model/SGT_{model_name_list[i]}.csv', index=False)
+        IGT_result = model.fit(IGT_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha', num_exp_restart=100)
+        IGT_result.to_csv(f'./data/Model/IGT_{model_name_list[i]}.csv', index=False)
 
     # # Now fit the data with moving window
     # for i , model in enumerate(model_list):
@@ -68,122 +69,122 @@ if __name__== '__main__':
     #     IGT_mv.to_csv(f'./data/Model/Sliding Window/IGT_{model_name_list[i]}_mv.csv', index=False)
 
 
-    # # ==================================================================================================================
-    # # Load the model fitting results
-    # # ==================================================================================================================
-    # load all model fitting results from directory
-    model_fitting_results = {}
-    model_files = ['SGT_delta.csv', 'SGT_decay.csv', 'SGT_delta_PVL.csv', 'SGT_decay_PVL.csv', 'SGT_delta_asymmetric.csv',
-                   'SGT_decay_PVPE.csv', 'IGT_delta.csv', 'IGT_decay.csv', 'IGT_delta_PVL.csv', 'IGT_decay_PVL.csv',
-                   'IGT_delta_asymmetric.csv', 'IGT_decay_PVPE.csv']
-    param_map = {
-        'delta': ['t', 'alpha'],
-        'decay': ['t', 'alpha'],
-        'delta_PVL': ['t', 'alpha', 'shape', 'la'],
-        'decay_PVL': ['t', 'alpha', 'shape', 'la'],
-        'delta_asymmetric': ['t', 'alpha_pos', 'alpha_neg'],
-        'decay_PVPE': ['t', 'alpha', 'weight', 'shape']
-    }
-
-    for file in model_files:
-        name = file.replace('.csv', '')
-        task_name = name.split('_')[0]
-        model_name = '_'.join(name.split('_')[1:])
-        model_fitting_results[name] = pd.read_csv(f'./data/Model/{file}')
-        model_fitting_results[name].rename(columns={'participant_id': 'Subnum'}, inplace=True)
-        model_fitting_results[name] = parameter_extractor(model_fitting_results[name], param_name=param_map[model_name])
-        model_fitting_results[name]['Task'] = task_name
-        # remove unnecessary columns
-        cols_to_keep = ['Subnum', 'AIC', 'BIC'] + param_map[model_name] + ['Task']
-        model_fitting_results[name] = model_fitting_results[name][cols_to_keep]
-        print(f'Task: {task_name}; Model: {model_name}; Mean BIC: {model_fitting_results[name]["BIC"].mean()}')
-        globals()[name] = model_fitting_results[name]
-
-    selected_model = 'decay_PVL'
-    selected_model_results = pd.concat([
-        globals()[f'SGT_{selected_model}'],
-        globals()[f'IGT_{selected_model}']
-    ], ignore_index=True)
-    dm_summary_modeled = dm_summary.merge(selected_model_results, on=['Subnum', 'Task'], how='left')
-    for param in param_map[selected_model]:
-        dm_summary_modeled[f'{param}_z'] = dm_summary_modeled.groupby(['Task'])[param].transform(lambda x: (x - x.mean()) / x.std())
-    dm_summary_modeled.to_csv('./data/dm_summary_modeled.csv', index=False)
-
-    # Now pivot the modeled summary to wide format
-    dm_summary_modeled_wide = dm_summary_modeled.pivot_table(index=['Subnum', 'Condition', 'Order'], columns=['Task'],
-                                                              values=['AIC', 'BIC', 't', 'alpha', 'shape', 'la', 't_z',
-                                                                      'alpha_z', 'shape_z', 'la_z']).reset_index()
-    dm_summary_modeled_wide.columns = ['_'.join(map(str, col)).strip() if col[1] else col[0] for col in dm_summary_modeled_wide.columns.values]
-    for param in param_map[selected_model]:
-        dm_summary_modeled_wide[f'{param}_Diff'] = dm_summary_modeled_wide[f'{param}_SGT'] - dm_summary_modeled_wide[f'{param}_IGT']
-        dm_summary_modeled_wide[f'{param}_Diff_z'] = dm_summary_modeled_wide[f'{param}_Diff'].transform(lambda x: (x - x.mean()) / x.std())
-    dm_summary_modeled_wide.to_csv('./data/dm_summary_modeled_wide.csv', index=False)
-
-
-
-    avg_rating = pd.read_csv('./data/avg_rating.csv')
-
-    # Load the moving window model fitting results
-    SGT_delta_mv = pd.read_csv('./data/Model/Sliding Window/SGT_delta_mv.csv')
-    SGT_decay_mv = pd.read_csv('./data/Model/Sliding Window/SGT_decay_mv.csv')
-    SGT_decayPVL_mv = pd.read_csv('./data/Model/Sliding Window/SGT_decay_PVL_mv.csv')
-    IGT_delta_mv = pd.read_csv('./data/Model/Sliding Window/IGT_delta_mv.csv')
-    IGT_decay_mv = pd.read_csv('./data/Model/Sliding Window/IGT_decay_mv.csv')
-    IGT_decayPVL_mv = pd.read_csv('./data/Model/Sliding Window/IGT_decay_PVL_mv.csv')
-
-
-    # Add the condition column
-    condition_map = dm_data[['Subnum', 'Condition']].drop_duplicates().set_index('Subnum')['Condition']
-
-    for i, df in enumerate([SGT_delta_mv, SGT_decay_mv, SGT_decayPVL_mv, IGT_delta_mv, IGT_decay_mv, IGT_decayPVL_mv]):
-        df['Subnum'] = df['participant_id']
-        df['Condition'] = df['Subnum'].map(condition_map)
-        # extract parameters
-        if i in [0, 1, 3, 4]:  # delta and decay models
-            df = parameter_extractor(df, param_name=['t', 'alpha'])
-        else:  # decay_PVL model
-            df = parameter_extractor(df, param_name=['t', 'alpha', 'shape', 'la'])
-
-
-    # # Extract best fitting parameters
-    # for i, df in enumerate([SGT_dual, SGT_dual_mv, IGT_dual, IGT_dual_mv]):
-    #     df = parameter_extractor(df, param_name=['t', 'alpha', 'subj_weight', 't2'])
-    #     df['t_diff'] = df['t'] - df['t'].shift(1)
-    #     df['alpha_diff'] = df['alpha'] - df['alpha'].shift(1)
-    #     df['subj_weight_diff'] = df['subj_weight'] - df['subj_weight'].shift(1)
-    #     df['t2_diff'] = df['t2'] - df['t2'].shift(1)
-
-    # Change the window number (This should be changed when counterbalance is used)
-    for i, df in enumerate([IGT_delta_mv, IGT_decay_mv, IGT_decayPVL_mv]):
-        df['task_id'] = 1
-
-    for i, df in enumerate([SGT_delta_mv, SGT_decay_mv, SGT_decayPVL_mv]):
-        df['task_id'] = 2
-        df['window_id'] = df['window_id'] + 91
-
-    # Combine the dataframes
-    delta_results = pd.concat([IGT_delta_mv, SGT_delta_mv], ignore_index=True)
-    decay_results = pd.concat([IGT_decay_mv, SGT_decay_mv], ignore_index=True)
-    decayPVL_results = pd.concat([IGT_decayPVL_mv, SGT_decayPVL_mv], ignore_index=True)
-
-    # Add the avg rating to the results
-    delta_results = delta_results.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
-    decay_results = decay_results.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
-    dual_results = dual_results.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
-
-    # Save the results
-    delta_results.to_csv('./data/Model/Sliding Window/Delta_Results.csv', index=False)
-    decay_results.to_csv('./data/Model/Sliding Window/Decay_Results.csv', index=False)
-    dual_results.to_csv('./data/Model/Sliding Window/Dual_Results.csv', index=False)
-
-    # Print the results
-    print(f'SGT Delta AIC: {SGT_delta["AIC"].mean()}; SGT Delta BIC: {SGT_delta["BIC"].mean()}')
-    print(f'SGT Decay AIC: {SGT_decay["AIC"].mean()}; SGT Decay BIC: {SGT_decay["BIC"].mean()}')
-    print(f'SGT Dual AIC: {SGT_dual["AIC"].mean()}; SGT Dual BIC: {SGT_dual["BIC"].mean()}')
-    print(f'IGT Delta AIC: {IGT_delta["AIC"].mean()}; IGT Delta BIC: {IGT_delta["BIC"].mean()}')
-    print(f'IGT Decay AIC: {IGT_decay["AIC"].mean()}; IGT Decay BIC: {IGT_decay["BIC"].mean()}')
-    print(f'IGT Dual AIC: {IGT_dual["AIC"].mean()}; IGT Dual BIC: {IGT_dual["BIC"].mean()}')
+    # # # ==================================================================================================================
+    # # # Load the model fitting results
+    # # # ==================================================================================================================
+    # # load all model fitting results from directory
+    # model_fitting_results = {}
+    # model_files = ['SGT_delta.csv', 'SGT_decay.csv', 'SGT_delta_PVL.csv', 'SGT_decay_PVL.csv', 'SGT_delta_asymmetric.csv',
+    #                'SGT_decay_PVPE.csv', 'IGT_delta.csv', 'IGT_decay.csv', 'IGT_delta_PVL.csv', 'IGT_decay_PVL.csv',
+    #                'IGT_delta_asymmetric.csv', 'IGT_decay_PVPE.csv']
+    # param_map = {
+    #     'delta': ['t', 'alpha'],
+    #     'decay': ['t', 'alpha'],
+    #     'delta_PVL': ['t', 'alpha', 'shape', 'la'],
+    #     'decay_PVL': ['t', 'alpha', 'shape', 'la'],
+    #     'delta_asymmetric': ['t', 'alpha_pos', 'alpha_neg'],
+    #     'decay_PVPE': ['t', 'alpha', 'weight', 'shape']
+    # }
     #
+    # for file in model_files:
+    #     name = file.replace('.csv', '')
+    #     task_name = name.split('_')[0]
+    #     model_name = '_'.join(name.split('_')[1:])
+    #     model_fitting_results[name] = pd.read_csv(f'./data/Model/{file}')
+    #     model_fitting_results[name].rename(columns={'participant_id': 'Subnum'}, inplace=True)
+    #     model_fitting_results[name] = parameter_extractor(model_fitting_results[name], param_name=param_map[model_name])
+    #     model_fitting_results[name]['Task'] = task_name
+    #     # remove unnecessary columns
+    #     cols_to_keep = ['Subnum', 'AIC', 'BIC'] + param_map[model_name] + ['Task']
+    #     model_fitting_results[name] = model_fitting_results[name][cols_to_keep]
+    #     print(f'Task: {task_name}; Model: {model_name}; Mean BIC: {model_fitting_results[name]["BIC"].mean()}')
+    #     globals()[name] = model_fitting_results[name]
+    #
+    # selected_model = 'decay_PVL'
+    # selected_model_results = pd.concat([
+    #     globals()[f'SGT_{selected_model}'],
+    #     globals()[f'IGT_{selected_model}']
+    # ], ignore_index=True)
+    # dm_summary_modeled = dm_summary.merge(selected_model_results, on=['Subnum', 'Task'], how='left')
+    # for param in param_map[selected_model]:
+    #     dm_summary_modeled[f'{param}_z'] = dm_summary_modeled.groupby(['Task'])[param].transform(lambda x: (x - x.mean()) / x.std())
+    # dm_summary_modeled.to_csv('./data/dm_summary_modeled.csv', index=False)
+    #
+    # # Now pivot the modeled summary to wide format
+    # dm_summary_modeled_wide = dm_summary_modeled.pivot_table(index=['Subnum', 'Condition', 'Order'], columns=['Task'],
+    #                                                           values=['AIC', 'BIC', 't', 'alpha', 'shape', 'la', 't_z',
+    #                                                                   'alpha_z', 'shape_z', 'la_z']).reset_index()
+    # dm_summary_modeled_wide.columns = ['_'.join(map(str, col)).strip() if col[1] else col[0] for col in dm_summary_modeled_wide.columns.values]
+    # for param in param_map[selected_model]:
+    #     dm_summary_modeled_wide[f'{param}_Diff'] = dm_summary_modeled_wide[f'{param}_SGT'] - dm_summary_modeled_wide[f'{param}_IGT']
+    #     dm_summary_modeled_wide[f'{param}_Diff_z'] = dm_summary_modeled_wide[f'{param}_Diff'].transform(lambda x: (x - x.mean()) / x.std())
+    # dm_summary_modeled_wide.to_csv('./data/dm_summary_modeled_wide.csv', index=False)
+    #
+    #
+    #
+    # avg_rating = pd.read_csv('./data/avg_rating.csv')
+    #
+    # # Load the moving window model fitting results
+    # SGT_delta_mv = pd.read_csv('./data/Model/Sliding Window/SGT_delta_mv.csv')
+    # SGT_decay_mv = pd.read_csv('./data/Model/Sliding Window/SGT_decay_mv.csv')
+    # SGT_decayPVL_mv = pd.read_csv('./data/Model/Sliding Window/SGT_decay_PVL_mv.csv')
+    # IGT_delta_mv = pd.read_csv('./data/Model/Sliding Window/IGT_delta_mv.csv')
+    # IGT_decay_mv = pd.read_csv('./data/Model/Sliding Window/IGT_decay_mv.csv')
+    # IGT_decayPVL_mv = pd.read_csv('./data/Model/Sliding Window/IGT_decay_PVL_mv.csv')
+    #
+    #
+    # # Add the condition column
+    # condition_map = dm_data[['Subnum', 'Condition']].drop_duplicates().set_index('Subnum')['Condition']
+    #
+    # for i, df in enumerate([SGT_delta_mv, SGT_decay_mv, SGT_decayPVL_mv, IGT_delta_mv, IGT_decay_mv, IGT_decayPVL_mv]):
+    #     df['Subnum'] = df['participant_id']
+    #     df['Condition'] = df['Subnum'].map(condition_map)
+    #     # extract parameters
+    #     if i in [0, 1, 3, 4]:  # delta and decay models
+    #         df = parameter_extractor(df, param_name=['t', 'alpha'])
+    #     else:  # decay_PVL model
+    #         df = parameter_extractor(df, param_name=['t', 'alpha', 'shape', 'la'])
+    #
+    #
+    # # # Extract best fitting parameters
+    # # for i, df in enumerate([SGT_dual, SGT_dual_mv, IGT_dual, IGT_dual_mv]):
+    # #     df = parameter_extractor(df, param_name=['t', 'alpha', 'subj_weight', 't2'])
+    # #     df['t_diff'] = df['t'] - df['t'].shift(1)
+    # #     df['alpha_diff'] = df['alpha'] - df['alpha'].shift(1)
+    # #     df['subj_weight_diff'] = df['subj_weight'] - df['subj_weight'].shift(1)
+    # #     df['t2_diff'] = df['t2'] - df['t2'].shift(1)
+    #
+    # # Change the window number (This should be changed when counterbalance is used)
+    # for i, df in enumerate([IGT_delta_mv, IGT_decay_mv, IGT_decayPVL_mv]):
+    #     df['task_id'] = 1
+    #
+    # for i, df in enumerate([SGT_delta_mv, SGT_decay_mv, SGT_decayPVL_mv]):
+    #     df['task_id'] = 2
+    #     df['window_id'] = df['window_id'] + 91
+    #
+    # # Combine the dataframes
+    # delta_results = pd.concat([IGT_delta_mv, SGT_delta_mv], ignore_index=True)
+    # decay_results = pd.concat([IGT_decay_mv, SGT_decay_mv], ignore_index=True)
+    # decayPVL_results = pd.concat([IGT_decayPVL_mv, SGT_decayPVL_mv], ignore_index=True)
+    #
+    # # Add the avg rating to the results
+    # delta_results = delta_results.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
+    # decay_results = decay_results.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
+    # dual_results = dual_results.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
+    #
+    # # Save the results
+    # delta_results.to_csv('./data/Model/Sliding Window/Delta_Results.csv', index=False)
+    # decay_results.to_csv('./data/Model/Sliding Window/Decay_Results.csv', index=False)
+    # dual_results.to_csv('./data/Model/Sliding Window/Dual_Results.csv', index=False)
+    #
+    # # Print the results
+    # print(f'SGT Delta AIC: {SGT_delta["AIC"].mean()}; SGT Delta BIC: {SGT_delta["BIC"].mean()}')
+    # print(f'SGT Decay AIC: {SGT_decay["AIC"].mean()}; SGT Decay BIC: {SGT_decay["BIC"].mean()}')
+    # print(f'SGT Dual AIC: {SGT_dual["AIC"].mean()}; SGT Dual BIC: {SGT_dual["BIC"].mean()}')
+    # print(f'IGT Delta AIC: {IGT_delta["AIC"].mean()}; IGT Delta BIC: {IGT_delta["BIC"].mean()}')
+    # print(f'IGT Decay AIC: {IGT_decay["AIC"].mean()}; IGT Decay BIC: {IGT_decay["BIC"].mean()}')
+    # print(f'IGT Dual AIC: {IGT_dual["AIC"].mean()}; IGT Dual BIC: {IGT_dual["BIC"].mean()}')
+    # #
     # # ==================================================================================================================
     # # Statistical analysis
     # # ==================================================================================================================
@@ -284,24 +285,24 @@ if __name__== '__main__':
     # Plot the model fitting results
     # ==================================================================================================================
     # Preprocess the data for plotting
-    models = ['Delta', 'Decay', 'Decay_PVL']
-    for i, df in enumerate([delta_results, decay_results, decayPVL_results]):
-        df['Condition'] = pd.Categorical(df['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
-
-
-    # Draw the model fitting results for all models and parameters
-    for i, model_result in enumerate([delta_results, decay_results, decayPVL_results]):
-        for param in ['t', 'alpha', 'shape', 'la']:
-            # check if the parameter exists in the model result
-            if param not in model_result.columns:
-                continue
-            plt.figure(figsize=(10, 6))
-            sns.lineplot(data=model_result, x='window_id', y=param, hue='Condition', errorbar='se')
-            plt.xlabel('Window Number')
-            plt.ylabel(param)
-            plt.axvline(x=91, color='red', linestyle='--', label='Task Switch')
-            plt.savefig(f'./figures/{param}ByWindow_{models[i]}.png', dpi=600)
-            plt.show()
+    # models = ['Delta', 'Decay', 'Decay_PVL']
+    # for i, df in enumerate([delta_results, decay_results, decayPVL_results]):
+    #     df['Condition'] = pd.Categorical(df['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+    #
+    #
+    # # Draw the model fitting results for all models and parameters
+    # for i, model_result in enumerate([delta_results, decay_results, decayPVL_results]):
+    #     for param in ['t', 'alpha', 'shape', 'la']:
+    #         # check if the parameter exists in the model result
+    #         if param not in model_result.columns:
+    #             continue
+    #         plt.figure(figsize=(10, 6))
+    #         sns.lineplot(data=model_result, x='window_id', y=param, hue='Condition', errorbar='se')
+    #         plt.xlabel('Window Number')
+    #         plt.ylabel(param)
+    #         plt.axvline(x=91, color='red', linestyle='--', label='Task Switch')
+    #         plt.savefig(f'./figures/{param}ByWindow_{models[i]}.png', dpi=600)
+    #         plt.show()
 
     # # # Draw BIC for all models
     # # delta_results['Model'] = 'Delta'

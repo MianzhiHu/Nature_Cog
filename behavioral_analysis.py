@@ -42,6 +42,35 @@ for metric in ['BestOption', 'HighFreqOption', 'HighMagOption']:
 for col in ['BestOption', 'HighFreqOption', 'HighMagOption', 'BestOption_Optim', 'HighFreqOption_Optim', 'HighMagOption_Optim']:
     dm_summary[f'{col}_z'] = dm_summary.groupby('Task')[col].transform(z_score)
 
+# From dm_data, extract the switch rate and win-stay lose-shift rates
+dm_prev = dm_data.copy()
+dm_prev['PrevChoice'] = dm_prev.groupby(['Subnum', 'Condition', 'Task', 'Order'])['keyResponse'].shift(1)
+dm_prev['PrevOutcome'] = dm_prev.groupby(['Subnum', 'Condition', 'Task', 'Order'])['Reward'].shift(1)
+dm_prev['Switch'] = np.where(dm_prev['keyResponse'] != dm_prev['PrevChoice'], 1, 0)
+dm_prev['WinStay'] = np.where((dm_prev['PrevOutcome'] > 0) & (dm_prev['keyResponse'] == dm_prev['PrevChoice']), 1, 0)
+dm_prev['LoseShift'] = np.where((dm_prev['PrevOutcome'] <= 0) & (dm_prev['keyResponse'] != dm_prev['PrevChoice']), 1, 0)
+dm_prev['WSLS'] = dm_prev['WinStay'] + dm_prev['LoseShift']
+
+dm_switch_summary = (dm_prev.groupby(['Subnum', 'Condition', 'Task', 'Order'], observed=True).agg({
+    'Switch': 'mean',
+    'WinStay': 'mean',
+    'LoseShift': 'mean',
+    'WSLS': 'mean'
+}).reset_index())
+dm_switch_summary_wide = dm_switch_summary.pivot_table(index=['Subnum', 'Condition', 'Order'], columns='Task',
+                                                      values=['Switch', 'WinStay', 'LoseShift', 'WSLS'], observed=True)
+dm_switch_summary_wide.columns = ['_'.join(col).strip() for col in dm_switch_summary_wide.columns.values]
+dm_switch_summary_wide = dm_switch_summary_wide.reset_index()
+for metric in ['Switch', 'WinStay', 'LoseShift', 'WSLS']:
+    diff_col = f'{metric}_Diff'
+    dm_switch_summary_wide[diff_col] = np.where(
+        dm_switch_summary_wide['Order'] == 'IGT_SGT',
+        dm_switch_summary_wide[f'{metric}_SGT'] - dm_switch_summary_wide[f'{metric}_IGT'],
+        dm_switch_summary_wide[f'{metric}_IGT'] - dm_switch_summary_wide[f'{metric}_SGT']
+    )
+    # remove the mean difference
+    dm_switch_summary_wide[f'{diff_col}_z'] = dm_switch_summary_wide[diff_col].transform(z_score)
+
 # pivot to wide format
 all_metrics = ['BestOption', 'HighFreqOption', 'HighMagOption', 'BestOption_Optim', 'HighFreqOption_Optim',
                'HighMagOption_Optim', 'BestOption_z', 'HighFreqOption_z', 'HighMagOption_z', 'BestOption_Optim_z',
@@ -62,6 +91,7 @@ for metric in ['BestOption_z', 'HighFreqOption_z', 'HighMagOption_z', 'BestOptio
     # remove the mean difference
     dm_summary_task_wide[f'{diff_col}_z'] = dm_summary_task_wide[diff_col].transform(z_score)
 
+dm_summary_task_wide = pd.merge(dm_summary_task_wide, dm_switch_summary_wide, on=['Subnum', 'Condition', 'Order'], how='left')
 dm_summary_task_wide.to_csv('./data/dm_summary_task_wide.csv', index=False)
 
 # now calculate deck selection proportions
@@ -78,6 +108,7 @@ deck_summary_task_wide = deck_summary.pivot_table(index=['Subnum', 'Condition', 
                                                   values=['ChoiceRate', 'ChoiceRate_z'], observed=True)
 deck_summary_task_wide.columns = [f'{task}_{deck}' for task, deck in deck_summary_task_wide.columns.to_flat_index()]
 dm_summary = pd.merge(dm_summary, deck_summary_task_wide, on=['Subnum', 'Condition', 'Task', 'Order'], how='left')
+dm_summary = pd.merge(dm_summary, dm_switch_summary, on=['Subnum', 'Condition', 'Task', 'Order'], how='left')
 dm_summary .to_csv('./data/dm_summary.csv', index=False)
 
 task_2nd_summary = dm_summary[dm_summary['TaskCode'] == 2].copy()
@@ -127,7 +158,7 @@ print(f'Adjusted p-values for one-sample t-tests: {p_adjusted[1]}')
 
 # Plot IGT-SGT results
 dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
-g = sns.catplot(data=dm_summary, x='Condition', y='BestOption_z', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
+g = sns.catplot(data=dm_summary, x='Condition', y='LoseShift', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
                 height=4, aspect=1.2)
 g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
 g.set_titles('{col_name} - {row_name}')

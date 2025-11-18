@@ -185,7 +185,7 @@ model <- glm(BestOption_z_IGT ~ Condition + BestOption_z_SGT, data = igt_2nd)
 summary(model)
 plot(allEffects(model))
 
-model <- glm(BestOption_z_SGT ~ Condition + BestOption_z_IGT, data = sgt_2nd)
+model <- glm(LoseShift_SGT ~ Condition + LoseShift_IGT, data = sgt_2nd)
 summary(model)
 plot(allEffects(model))
 
@@ -193,7 +193,7 @@ model <- lmer(HighFreqOption ~ Condition + (1|Subnum), data = dm_data)
 summary(model)
 plot(allEffects(model))
 
-model <- glm(BestOption_z_Diff ~ Condition, data = igt_sgt_wide)
+model <- glm(WSLS_Diff ~ Condition, data = igt_sgt_wide)
 summary(model)
 plot(allEffects(model))
 
@@ -202,7 +202,7 @@ summary(model)
 plot(allEffects(model))
 
 
-model <- glm(BestOption_z_Diff ~ Condition * Order, data = dm_summary_wide)
+model <- glm(WSLS_Diff_z ~ Condition * Order, data = dm_summary_wide)
 summary(model)
 plot(allEffects(model))
 
