@@ -14,17 +14,25 @@ ratings = ['naturalness', 'disorderliness', 'aesthetic']
 # behav_perf = ['BestOption_z_Diff', 'HighFreqOption_z_Diff', 'HighMagOption_z_Diff', 'IGT_Deck_A', 'IGT_Deck_B',
 #               'IGT_Deck_C', 'IGT_Deck_D', 'SGT_Deck_A', 'SGT_Deck_B', 'SGT_Deck_C', 'SGT_Deck_D']
 behav_perf = ['BestOption_z_Diff', 'HighFreqOption_z_Diff', 'HighMagOption_z_Diff']
-visual_features = ['Hue', 'SDHue', 'Bright', 'SDBright', 'Saturaton', 'SDSat', 'Entropy', 'EdgeCount', 'CornerMean',
-                   'CornerSD', 'CornerCount', 'ContourMeanLength', 'ContourSDLength', 'ContourMeanArea', 'ContourSDArea',
-                   'ContourCount', 'AsymmetryV', 'AsymmetryH', 'KPMeanSize', 'KPSDSize', 'KPMeanStrength', 'KPSDStrength',
-                   'KPMeanAngle', 'KPSDAngle', 'KPCount']
+low_visual_features = ['Hue', 'SDHue', 'Bright', 'SDBright', 'Saturaton', 'SDSat', 'Contrast', 'Dissimilarity',
+                       'Homogeneity', 'Energy', 'Correlation', 'MeanTexture', 'SDTexture', 'Entropy', 'EdgeCount',
+                       'CornerMean', 'CornerSD', 'CornerCount', 'ContourMeanLength', 'ContourSDLength',
+                       'ContourMeanArea', 'ContourSDArea', 'ContourCount', 'AsymmetryV', 'AsymmetryH']
+semantic_visual_features = ['sky', 'grass', 'plant', 'water', 'sea', 'fence', 'path', 'river', 'bench', 'pole',
+                            'building', 'tree', 'earth', 'rock', 'streetlight', 'ashcan', 'table', 'wall', 'chair',
+                            'signboard', 'stairs', 'pot', 'sculpture', 'sidewalk', 'railing', 'road', 'person',
+                            'mountain', 'lake', 'floor', 'car', 'traffic light']
+# semantic_visual_features = ['sky', 'grass', 'plant', 'water', 'fence', 'path', 'river', 'bench', 'pole', 'building',
+#                             'tree', 'earth', 'rock', 'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road',
+#                             'person', 'mountain', 'car']
+visual_features = low_visual_features + semantic_visual_features
 model_param = ['alpha_z_IGT', 'alpha_z_SGT', 'la_z_IGT', 'la_z_SGT', 'shape_z_IGT', 'shape_z_SGT', 't_z_IGT', 't_z_SGT', 't_Diff_z',
                'alpha_Diff_z', 'shape_Diff_z', 'la_Diff_z']
 dm_summary = pd.read_csv('./data/dm_summary.csv')
 dm_summary_wide = pd.read_csv(('./data/dm_summary_task_wide.csv'))
 deck_summary = pd.read_csv(('./data/deck_summary.csv'))
 model_summary = pd.read_csv(('./data/dm_summary_modeled_wide.csv'))
-dm_summary = dm_summary[['Subnum', 'Condition', 'Order'] + ratings + visual_features].drop_duplicates()
+dm_summary = dm_summary[['Subnum', 'Condition', 'Order'] + ratings + low_visual_features + semantic_visual_features].drop_duplicates()
 
 if __name__ == '__main__':
     # ======================================================================================================================
@@ -48,8 +56,6 @@ if __name__ == '__main__':
 
     # Parse the data
     condition_list = summary_all['Condition'].unique().tolist()
-    if 'Control' in condition_list:
-        condition_list.remove('Control') # remove control condition because we do not have visual ratings for control condition
     order_list = summary_all['Order'].unique().tolist()
 
     for cond in condition_list:
@@ -66,13 +72,16 @@ if __name__ == '__main__':
             subset = summary_all[(summary_all['Condition'] == cond) & (summary_all['Order'] == order)].copy()
             ratings_df = subset[ratings].copy()
             behav_perf_df = subset[order_specific_behav_perf].copy()
+            low_visual_features_df = subset[low_visual_features].copy()
+            semantic_visual_features_df = subset[semantic_visual_features].copy()
             visual_features_df = subset[visual_features].copy()
             model_param_df = subset[order_specific_model_param].copy()
 
             # save to csv
             ratings_df.to_csv(f'./data/PLS_Data/PLS_Ratings_{cond}_{order}.csv', index=False)
             behav_perf_df.to_csv(f'./data/PLS_Data/PLS_BehavPerf_{cond}_{order}.csv', index=False)
-            visual_features_df.to_csv(f'./data/PLS_Data/PLS_VisualFeatures_{cond}_{order}.csv', index=False)
+            low_visual_features_df.to_csv(f'./data/PLS_Data/PLS_VisualFeatures_{cond}_{order}.csv', index=False)
+            semantic_visual_features_df.to_csv(f'./data/PLS_Data/PLS_Semantic_{cond}_{order}.csv', index=False)
             model_param_df.to_csv(f'./data/PLS_Data/PLS_ModelParams_{cond}_{order}.csv', index=False)
 
 

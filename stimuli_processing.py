@@ -1,9 +1,12 @@
 import os
-import shutil
 import numpy as np
 import pandas as pd
 import cv2
 from matplotlib import pyplot as plt
+from skimage.feature import graycomatrix, graycoprops
+from transformers import AutoTokenizer, AutoModelForSemanticSegmentation, AutoProcessor
+from PIL import Image
+import torch
 
 # # ======================================================================================================================
 # # Generate nature versus non-nature stimuli
@@ -80,6 +83,9 @@ for file in os.listdir(edge_stimuli_path):
 # ======================================================================================================================
 # Load all images
 # ======================================================================================================================
+distances = [1, 2, 4, 8]
+angles = [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4]
+
 def load_images_from_folder(folder):
     images = {}
     for filename in os.listdir(folder):
@@ -119,10 +125,16 @@ def extract_visual_features(pathm, upper_threshold=0.60, lower_threshold=0.25):
     Saturation = float(S.mean())
     SDsat = float(S.std())
 
-    # entropy
-    hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
-    p = hist / hist.sum()
-    Entropy = float(-np.nansum(p * np.log2(p + 1e-32)))
+    # texture features
+    glcm = graycomatrix(gray, distances=distances, angles=angles)
+    contrast = graycoprops(glcm, 'contrast').flatten()
+    dissimilarity = graycoprops(glcm, 'dissimilarity').flatten()
+    homogeneity = graycoprops(glcm, 'homogeneity').flatten()
+    energy = graycoprops(glcm, 'energy').flatten()
+    correlation = graycoprops(glcm, 'correlation').flatten()
+    mean_texture = graycoprops(glcm, 'mean').flatten()
+    std_texture = graycoprops(glcm, 'std').flatten()
+    entropy = graycoprops(glcm, 'entropy').flatten()
 
     # edges
     upper = upper_threshold * gray.max()
@@ -158,7 +170,6 @@ def extract_visual_features(pathm, upper_threshold=0.60, lower_threshold=0.25):
     mean_corner_strength = np.mean(corner_strengths)
     sd_corner_strength = np.std(corner_strengths)
     corner_count = len(corners)
-    corner_density = corner_count / total_pixels
 
     # vertical symmetry
     flipped_img = cv2.flip(gray, 1)
@@ -175,7 +186,14 @@ def extract_visual_features(pathm, upper_threshold=0.60, lower_threshold=0.25):
         "SDBright": Sdbright,
         "Saturaton": Saturation,
         "SDSat": SDsat,
-        "Entropy": Entropy,
+        "Contrast": contrast.mean(),
+        "Dissimilarity": dissimilarity.mean(),
+        "Homogeneity": homogeneity.mean(),
+        "Energy": energy.mean(),
+        "Correlation": correlation.mean(),
+        "MeanTexture": mean_texture.mean(),
+        "SDTexture": std_texture.mean(),
+        "Entropy": entropy.mean(),
         "EdgeCount": ED,
         "CornerMean": mean_corner_strength,
         "CornerSD": sd_corner_strength,
@@ -205,8 +223,63 @@ for dir in [nature_stimuli_path, non_nature_stimuli_path, edge_stimuli_path]:
         features_reconstructed.append(features)
 
 visual_features_df = pd.DataFrame(features_reconstructed)
-visual_features_df.to_csv('./stimuli/visual_features_extracted.csv', index=False)
 
+# ======================================================================================================================
+# Semantic segmentation using SegFormer
+# ======================================================================================================================
+model_name = "nvidia/segformer-b3-finetuned-ade-512-512"
+feature_extractor = AutoProcessor.from_pretrained(model_name, use_fast=True)
+model = AutoModelForSemanticSegmentation.from_pretrained(model_name)
+model.eval()
+id2label = model.config.id2label  # dict: {0: 'wall', 1: 'building', ...}
+features_extracted = []
+
+for path in [nature_stimuli_path, non_nature_stimuli_path]:
+    for file in os.listdir(path):
+        image_path = os.path.join(path, file)
+        image = Image.open(image_path).convert("RGB")
+        inputs = feature_extractor(images=image, return_tensors="pt")
+        with torch.no_grad():
+            outputs = model(**inputs)
+        logits = outputs.logits
+
+        # Get segmentation map
+        seg_map = logits.argmax(dim=1)[0].cpu().numpy()
+        unique_ids, counts = np.unique(seg_map, return_counts=True)
+
+        area_fractions = {
+            id2label[class_id]: counts[idx] / seg_map.size
+            for idx, class_id in enumerate(unique_ids)
+        }
+
+        area_fractions['ImageName'] = file.split('.')[0]
+        area_fractions['Category'] = 'Nature' if path == nature_stimuli_path else 'Urban'
+        features_extracted.append(area_fractions)
+
+features_df = pd.DataFrame(features_extracted)
+cols = features_df.columns.tolist()
+cols.insert(0, cols.pop(cols.index('ImageName'))) # make the ImageName the first column
+features_df = features_df[cols]
+features_df.fillna(0, inplace=True)  # fill NaN with 0
+
+# Remove features that are zeros in more than 95% of the images
+threshold = 0.95 * len(features_df)
+features_df = features_df.loc[:, (features_df == 0).sum(axis=0) < threshold]
+
+# Combine with visual features
+visual_features_df_all = pd.merge(visual_features_df, features_df, on='ImageName')
+print(visual_features_df_all.head())
+visual_features_df_all.to_csv('./stimuli/visual_features_extracted.csv')
+
+# Example
+# example_image = cv2.imread('./stimuli/nature/MDS140.jpg')
+# gray = cv2.cvtColor(example_image, cv2.COLOR_BGR2GRAY)
+# edges = cv2.Canny(gray, 100, 400)
+# plt.figure(figsize=(10, 5))
+# plt.imshow(edges, cmap='gray')
+# plt.axis('off')
+# plt.savefig('./figures/Canny_Edges_Example.png', dpi=600)
+# plt.show()
 
 # # run correlation with original visual features
 # nature_merged = pd.merge(nature_features_df, stimuli_info, on='ImageName')

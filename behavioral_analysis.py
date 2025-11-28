@@ -5,13 +5,15 @@ from statsmodels.formula.api import ols
 import matplotlib.pyplot as plt
 import seaborn as sns
 import functools
+from matplotlib import font_manager as fm
+import scipy.stats as stats
 
 # ======================================================================================================================
 # Load the data
 # ======================================================================================================================
 dm_data = pd.read_csv('./data/dm_data.csv')
 img_data = pd.read_csv('./data/img_data.csv')
-stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
+stimuli_info = pd.read_csv('./stimuli/visual_features_with_naturalness.csv')
 avg_rating = pd.read_csv('./data/avg_rating.csv')
 IGT_SGT = dm_data[dm_data['Order'] == 'IGT_SGT'].copy()
 
@@ -19,6 +21,13 @@ dm_data['Condition'] = pd.Categorical(dm_data['Condition'], categories=['Nature'
 task_1st = dm_data[dm_data['TaskCode'] == 1]
 task_2nd = dm_data[dm_data['TaskCode'] == 2]
 print(f'The number of participants: {dm_data.groupby('Order')['Subnum'].nunique().to_dict()}')
+img_count = img_data['image_name'].value_counts().reset_index()
+# # extract those who saw MDS
+# MDS_140_participants = img_data[img_data['image_name'].str.contains('MDS')]['Subnum'].unique().tolist()
+
+dm_data_sex = dm_data.groupby('Subnum')['Age'].first().reset_index()
+dm_data_sex['Age'] = pd.to_numeric(dm_data_sex['Age'], errors='coerce')
+print(dm_data_sex['Age'].std())
 
 def z_score(x):
     return (x - x.mean()) / x.std()
@@ -32,7 +41,7 @@ dm_summary = dm_data.groupby(['Subnum', 'Condition', 'Task', 'Order', 'TaskCode'
     'HighMagOption': 'mean'
 }).dropna().reset_index()
 dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
-dm_summary = dm_summary.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
+dm_summary = dm_summary.merge(avg_rating, on=['Subnum'], how='left')
 
 # Calculate optimality scores as (good choices - bad choices)
 for metric in ['BestOption', 'HighFreqOption', 'HighMagOption']:
@@ -133,8 +142,10 @@ IGT_SGT_summary_baseline['Condition'] = 'Baseline'
 IGT_SGT_summary = pd.concat([IGT_SGT_summary, IGT_SGT_summary_baseline], ignore_index=True)
 IGT_SGT_summary.to_csv('./data/IGT_SGT_summary.csv', index=False)
 IGT_SGT_summary_wide = dm_summary_task_wide[dm_summary_task_wide['Order'] == 'IGT_SGT'].copy()
+IGT_SGT_summary_wide = pd.merge(IGT_SGT_summary_wide, avg_rating[['Subnum', 'Naturalness_PCA', 'Semantic_PC1']], on='Subnum', how='left')
 dm_summary_modeled = pd.read_csv('./data/dm_summary_modeled.csv')
 dm_summary_modeled_wide = pd.read_csv('./data/dm_summary_modeled_wide.csv')
+dm_summary_modeled_wide['Condition'] = pd.Categorical(dm_summary_modeled_wide['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
 print(IGT_SGT_summary_wide.shape)
 
 # one sample t-test on the difference scores
@@ -156,39 +167,71 @@ print(pairwise)
 p_adjusted = pg.multicomp(pvals=p, method='fdr_bh')
 print(f'Adjusted p-values for one-sample t-tests: {p_adjusted[1]}')
 
-# Plot IGT-SGT results
-dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
-g = sns.catplot(data=dm_summary, x='Condition', y='LoseShift', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
-                height=4, aspect=1.2)
-g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
-g.set_titles('{col_name} - {row_name}')
-g.despine()
-plt.savefig('./figures/BestOptionByCondition_IGT_SGT.png', dpi=600)
-plt.show()
-
-g = sns.catplot(data=dm_summary_modeled, x='Condition', y='la_z', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
-                height=4, aspect=1.2)
-g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
-g.set_titles('{col_name} - {row_name}')
-g.despine()
-plt.savefig('./figures/tByCondition_IGT_SGT.png', dpi=600)
-plt.show()
+# # Plot IGT-SGT results
+# # keep MDS140 participants only for the nature condition
+# dm_summary_subset = dm_summary_task_wide[(dm_summary_task_wide['Condition'] == 'Nature') & (dm_summary_task_wide['Subnum'].isin(MDS_140_participants))].copy()
+# dm_summary_subset = pd.concat([dm_summary_subset,
+#                                dm_summary_task_wide[dm_summary_task_wide['Condition'] != 'Nature']], ignore_index=True)
+# dm_summary_subset['Condition'] = pd.Categorical(dm_summary_subset['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+# dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+# g = sns.catplot(data=dm_summary_subset, x='Condition', y='BestOption', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
+#                 height=4, aspect=1.2)
+# g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+# g.set_titles('{col_name} - {row_name}')
+# g.despine()
+# plt.savefig('./figures/BestOptionByCondition_IGT_SGT.png', dpi=600)
+# plt.show()
 
 # difference
-g = sns.catplot(data=dm_summary_task_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', col='Order', errorbar='se', kind='bar',
-                height=4, aspect=1.2)
-g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
-g.set_titles('{col_name}')
+palette = sns.color_palette('deep')
+nature_color = palette[2]
+urban_color = palette[3]
+control_color = palette[7]
+palette_custom = [nature_color, urban_color, control_color]
+
+# import font
+font_path = 'utils/AbhayaLibre-ExtraBold.ttf'
+prop = fm.FontProperties(fname=font_path)
+def upward_only(group):
+    mean = group.mean()
+    se = group.sem()
+    return (np.zeros_like(se), se)   # lower=0, upper=se
+
+g = sns.catplot(data=IGT_SGT_summary_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', errorbar='se', kind='bar',
+                height=5, aspect=1.2, palette=palette_custom)
+g.set_axis_labels('', 'Performance Improvement (z-score)', fontproperties=prop)
+# x and y tick labels
+g.set_xticklabels(fontproperties=prop, fontsize=18)
+g.set_yticklabels(fontproperties=prop, fontsize=12)
+# x and y labels
+for ax in g.axes.flat:
+    ax.yaxis.label.set_fontproperties(prop)
+    ax.yaxis.label.set_fontsize(20)
 g.despine()
+plt.tight_layout()
 plt.savefig('./figures/within_subj_diff.png', dpi=600)
 plt.show()
 
+g = sns.catplot(data=dm_summary_modeled_wide, x='Condition', y='la_Diff_z', hue='Condition', errorbar='se', kind='bar',
+                height=5, aspect=1.2, palette=palette_custom)
+g.set_axis_labels('', 'Loss Aversion Change (z-score)', fontproperties=prop)
+# x and y tick labels
+g.set_xticklabels(fontproperties=prop, fontsize=18)
+g.set_yticklabels(fontproperties=prop, fontsize=12)
+# x and y labels
+for ax in g.axes.flat:
+    ax.yaxis.label.set_fontproperties(prop)
+    ax.yaxis.label.set_fontsize(20)
+g.despine()
+plt.tight_layout()
+g.despine()
+plt.savefig('./figures/tByCondition_IGT_SGT.png', dpi=600)
+plt.show()
 
 img_rating_summary = img_data.groupby(['image_name', 'Condition']).agg({
     'naturalness': 'mean',
     'disorderliness': 'mean',
     'aesthetic': 'mean',
-    'Perc_Nat': 'mean'
 }).reset_index()
 # img_rating_summary = img_rating_summary[img_rating_summary['Condition'] != 'Control']
 
@@ -202,6 +245,39 @@ print(pg.corr(img_rating_summary['disorderliness'], img_rating_summary['aestheti
 me_model = ols('disorderliness ~ aesthetic + C(Condition) + (1|Subnum)', data=img_data).fit()
 print(me_model.summary())
 
+# Process image data
+# presence matrix for each image in each participant (1 if present, 0 if not) with each column as image_name
+img_data = img_data[img_data['Order'] == 'IGT_SGT'].copy()
+img_presence = img_data.pivot_table(index="Subnum", columns="image_name", values="Condition", aggfunc="count", fill_value=0)
+img_presence  = (img_presence > 0).astype(int)
+
+performance = IGT_SGT_summary_wide['BestOption_Optim_z_Diff']
+influences = {}
+
+for img in img_presence.columns:
+    influences[img] = stats.spearmanr(img_presence[img], performance)[0]
+    print(stats.spearmanr(img_presence[img], performance))
+
+influence_df = pd.DataFrame({
+    "ImageName": list(influences.keys()),
+    "Influence": list(influences.values()),
+    "Condition": [img_rating_summary[img_rating_summary['image_name'] == img]['Condition'].values[0] for img in influences.keys()]
+})
+t_test = pg.ttest(influence_df[influence_df['Condition'] == 'Control']['Influence'], 0)
+print(influence_df.groupby('Condition')['Influence'].mean())
+
+stimuli_info = stimuli_info.merge(influence_df, on='ImageName', how='left')
+stimuli_info = stimuli_info.merge(img_rating_summary[['image_name', 'naturalness', 'disorderliness', 'aesthetic']], left_on='ImageName', right_on='image_name', how='left')
+
+plt.figure(figsize=(8,6))
+sns.regplot(data=stimuli_info, x="Semantic_PC1", y="Influence", scatter=False, order=1)
+sns.scatterplot(data=stimuli_info, x="Semantic_PC1", y="Influence", hue="Condition", palette=palette_custom, s=100, edgecolor='black')
+
+plt.xlabel("Naturalness (PCA)")
+plt.ylabel("Image Influence on Behavior (z-diff)")
+plt.title("Stimulus-level Effects on Behavioral Performance")
+plt.savefig('./figures/Semantic_PC11-influence.png', dpi=600)
+plt.show()
 # ======================================================================================================================
 # Plotting
 # ======================================================================================================================
@@ -245,6 +321,13 @@ g = sns.catplot(data=dm_summary_task_wide, x='Condition', y='BestOption_Optim_z_
 g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
 g.set_titles('{col_name}')
 g.despine()
+plt.savefig('./figures/within_subj_diff.png', dpi=600)
+plt.show()
+
+g = sns.scatterplot(data=IGT_SGT_summary_wide, x='BestOption_Optim_z_Diff', y='Semantic_PC1', hue='Condition')
+# g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+# g.set_titles('{col_name}')
+# g.despine()
 plt.savefig('./figures/within_subj_diff.png', dpi=600)
 plt.show()
 

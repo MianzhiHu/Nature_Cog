@@ -35,7 +35,7 @@ SGT_IGT_folder_directory = ['./data/Data_SGT_IGT']
 IGT_SGT_folder_directory = ['./data/Data_IGT_SGT']
 behavioral_list = ['React', 'Reward', 'keyResponse', 'Trial', 'Bank']
 # stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
-stimuli_info = pd.read_csv('./stimuli/visual_features_extracted.csv')
+stimuli_info = pd.read_csv('./stimuli/visual_features_with_naturalness.csv')
 
 # read json metadata
 with open('./data/jatos_results_metadata_20251115142907.json', 'r') as f:
@@ -196,42 +196,31 @@ img_data = img_data.merge(stimuli_info, on='image_name', how='left')
 #
 # img_data = img_data[~img_data['Subnum'].isin(constant_raters)]
 # print(f'Removed {len(constant_raters)} participants who rated all images the samely')
+cols = img_data.columns.tolist()
+visual_features = ['naturalness', 'disorderliness', 'aesthetic', 'Hue', 'SDHue', 'Bright', 'SDBright', 'Saturaton',
+                   'SDSat', 'Contrast', 'Dissimilarity', 'Homogeneity', 'Energy', 'Correlation', 'MeanTexture',
+                   'SDTexture', 'Entropy', 'EdgeCount', 'CornerMean', 'CornerSD', 'CornerCount', 'ContourMeanLength',
+                   'ContourSDLength', 'ContourMeanArea', 'ContourSDArea', 'ContourCount', 'AsymmetryV', 'AsymmetryH',
+                   'KPMeanSize', 'KPSDSize', 'KPMeanStrength', 'KPSDStrength', 'KPMeanAngle', 'KPSDAngle', 'KPCount',
+                   'sky', 'grass', 'plant', 'water', 'sea', 'fence', 'path', 'river', 'bench', 'pole', 'building',
+                   'tree', 'earth', 'rock', 'streetlight', 'ashcan', 'table', 'wall', 'chair', 'signboard', 'stairs',
+                   'pot', 'sculpture', 'sidewalk', 'railing', 'road', 'person', 'mountain', 'lake', 'floor', 'car',
+                   'traffic light', 'Naturalness_PCA', 'Semantic_PC1']
 
-avg_rating = img_data.groupby(['Subnum']).agg({
-    'Condition': 'first',
-    'naturalness': 'mean',
-    'disorderliness': 'mean',
-    'aesthetic': 'mean',
-    "Hue": 'mean',
-    "SDHue": 'mean',
-    "Bright": 'mean',
-    "SDBright": 'mean',
-    "Saturaton": 'mean',
-    "SDSat": 'mean',
-    "Entropy": 'mean',
-    "EdgeCount": 'mean',
-    "CornerMean": 'mean',
-    "CornerSD": 'mean',
-    "CornerCount": 'mean',
-    "ContourMeanLength": 'mean',
-    "ContourSDLength": 'mean',
-    "ContourMeanArea": 'mean',
-    "ContourSDArea": 'mean',
-    "ContourCount": 'mean',
-    "AsymmetryV": 'mean',
-    "AsymmetryH": 'mean',
-    "KPMeanSize": 'mean',
-    "KPSDSize": 'mean',
-    "KPMeanStrength": 'mean',
-    "KPSDStrength": 'mean',
-    "KPMeanAngle": 'mean',
-    "KPSDAngle": 'mean',
-    "KPCount": 'mean'
-}).reset_index()
+# visual_features = ['naturalness', 'disorderliness', 'aesthetic', 'Hue', 'SDHue', 'Bright', 'SDBright', 'Saturaton',
+#                    'SDSat', 'Contrast', 'Dissimilarity', 'Homogeneity', 'Energy', 'Correlation', 'MeanTexture',
+#                    'SDTexture', 'Entropy', 'EdgeCount', 'CornerMean', 'CornerSD', 'CornerCount', 'ContourMeanLength',
+#                    'ContourSDLength', 'ContourMeanArea', 'ContourSDArea', 'ContourCount', 'AsymmetryV', 'AsymmetryH',
+#                    'KPMeanSize', 'KPSDSize', 'KPMeanStrength', 'KPSDStrength', 'KPMeanAngle', 'KPSDAngle', 'KPCount',
+#                    'sky', 'grass', 'plant', 'water', 'fence', 'path', 'river', 'bench', 'pole', 'building', 'tree',
+#                    'earth', 'rock', 'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road', 'person',
+#                    'mountain', 'car']
+
+avg_rating = img_data.groupby(['Subnum'])[visual_features].mean().reset_index()
 avg_rating.to_csv('./data/avg_rating.csv')
 
 # Add stimuli information to the dm data
-dm_data = dm_data.merge(avg_rating, on=['Subnum', 'Condition'], how='left')
+dm_data = dm_data.merge(avg_rating, on=['Subnum'], how='left')
 
 # Detect inattentive participants
 deck_counts = dm_data.groupby(['Subnum', 'Task'])['keyResponse'].nunique().reset_index()

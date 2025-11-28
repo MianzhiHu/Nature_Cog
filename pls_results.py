@@ -8,18 +8,19 @@ from statsmodels.stats.multitest import multipletests
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
-from pls_data_parser import behav_perf, visual_features, model_param
+from pls_data_parser import behav_perf, visual_features, model_param, semantic_visual_features, low_visual_features
 
 
 # add path to the PLS results
 result_dir = os.path.abspath('C:/Users/zuire/OneDrive/桌面/胡勉之/Texas A&M University/PLS/Result/Nature_Cog/')
 sys.path.append(result_dir)
 
-def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05):
+def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05, LV=1):
 
     # define the path
     lv_path = os.path.join(result_dir, lv_path)
     boot_ratio_path = os.path.join(result_dir, boot_ratio_path)
+    col = LV - 1
 
     # read lv_vals file
     lv_vals = sio.loadmat(lv_path)
@@ -27,8 +28,8 @@ def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05)
     # read bootstrap ratio file
     boot_ratio = sio.loadmat(boot_ratio_path)
 
-    u1 = lv_vals['u1'][:, 0]
-    boot_ratio = boot_ratio['bsrs1']
+    u1 = lv_vals['u1'][:, col]
+    boot_ratio = boot_ratio['bsrs1'][:, col]
 
     # combine the data with their respective columns
     result = np.column_stack((u1, boot_ratio))
@@ -53,7 +54,15 @@ def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05)
 
 behav_visual_results = get_pls_results('PLS_behav~visual_lv_vals.mat',
                                         'PLS_behav~visual.mat',
-                                        visual_features, method='fdr_bh', p=.05)
+                                        low_visual_features, method='fdr_bh', p=.05)
+
+behav_semantic_results = get_pls_results('PLS_behav~semantic_lv_vals.mat',
+                                        'PLS_behav~semantic.mat',
+                                        semantic_visual_features, method='fdr_bh', p=.05, LV=1)
+
+ratings_semantic_results = get_pls_results('PLS_ratings~semantic_lv_vals.mat',
+                                        'PLS_ratings~semantic.mat',
+                                        semantic_visual_features, method='fdr_bh', p=.05, LV=1)
 
 # extract the visual features components
 visual_feature_lv = sio.loadmat(os.path.join(result_dir, 'PLS_behav~visual.mat'))['result']['usc'][0][0][:, 0]

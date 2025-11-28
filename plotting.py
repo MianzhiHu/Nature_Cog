@@ -29,7 +29,7 @@ plt.title('Overall Best Option Rates in IGT-SGT')
 plt.ylabel('Best Option Rate (SGT - IGT)')
 plt.xlabel('Condition')
 # plt.ylim(0, 1)
-plt.savefig('./figures/Overall_BestOption_Rates_IGT_SGT.png', dpi=600)
+plt.savefig('./figures/Overall_BestOption_Rates_IGT_SGT1.png', dpi=600)
 plt.close()
 
 # two panel figure for raw performance
