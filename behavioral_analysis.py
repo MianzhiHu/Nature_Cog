@@ -142,7 +142,7 @@ IGT_SGT_summary_baseline['Condition'] = 'Baseline'
 IGT_SGT_summary = pd.concat([IGT_SGT_summary, IGT_SGT_summary_baseline], ignore_index=True)
 IGT_SGT_summary.to_csv('./data/IGT_SGT_summary.csv', index=False)
 IGT_SGT_summary_wide = dm_summary_task_wide[dm_summary_task_wide['Order'] == 'IGT_SGT'].copy()
-IGT_SGT_summary_wide = pd.merge(IGT_SGT_summary_wide, avg_rating[['Subnum', 'Naturalness_PCA', 'Semantic_PC1']], on='Subnum', how='left')
+IGT_SGT_summary_wide = pd.merge(IGT_SGT_summary_wide, avg_rating[['Subnum', 'Semantic_PC1', 'Semantic_PC2', 'Semantic_PC3']], on='Subnum', how='left')
 dm_summary_modeled = pd.read_csv('./data/dm_summary_modeled.csv')
 dm_summary_modeled_wide = pd.read_csv('./data/dm_summary_modeled_wide.csv')
 dm_summary_modeled_wide['Condition'] = pd.Categorical(dm_summary_modeled_wide['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
@@ -159,7 +159,7 @@ for con in ['Nature', 'Urban', 'Control']:
     p.append(ttest_result["p-val"].values[0])
 
 anova = pg.anova(dv='BestOption_z_Diff', between='Condition', data=IGT_SGT_summary_wide, detailed=True)
-pairwise = pg.pairwise_ttests(dv='BestOption_z_Diff', between='Condition', data=IGT_SGT_summary_wide, padjust='fdr_bh')
+pairwise = pg.pairwise_tests(dv='BestOption_z_Diff', between='Condition', data=IGT_SGT_summary_wide, padjust='fdr_bh')
 print(anova)
 print(pairwise)
 
@@ -236,7 +236,6 @@ img_rating_summary = img_data.groupby(['image_name', 'Condition']).agg({
 # img_rating_summary = img_rating_summary[img_rating_summary['Condition'] != 'Control']
 
 # run correlation analysis
-print(pg.corr(img_rating_summary['naturalness'], img_rating_summary['Perc_Nat'], method='pearson'))
 print(pg.corr(img_rating_summary['naturalness'], img_rating_summary['disorderliness'], method='pearson'))
 print(pg.corr(img_rating_summary['naturalness'], img_rating_summary['aesthetic'], method='pearson'))
 print(pg.corr(img_rating_summary['disorderliness'], img_rating_summary['aesthetic'], method='pearson'))
@@ -268,6 +267,7 @@ print(influence_df.groupby('Condition')['Influence'].mean())
 
 stimuli_info = stimuli_info.merge(influence_df, on='ImageName', how='left')
 stimuli_info = stimuli_info.merge(img_rating_summary[['image_name', 'naturalness', 'disorderliness', 'aesthetic']], left_on='ImageName', right_on='image_name', how='left')
+stimuli_info.to_csv('./stimuli/stimuli_influence.csv', index=False)
 
 plt.figure(figsize=(8,6))
 sns.regplot(data=stimuli_info, x="Semantic_PC1", y="Influence", scatter=False, order=1)
@@ -282,17 +282,17 @@ plt.show()
 # Plotting
 # ======================================================================================================================
 # Create a correlation plot
-plt.figure(figsize=(10, 6))
-sns.scatterplot(x='naturalness', y='Perc_Nat', hue='Condition', data=img_rating_summary, alpha=0.5)
-sns.regplot(x='naturalness', y='Perc_Nat', data=img_rating_summary, scatter=False,
-            line_kws={'color': 'red', 'linewidth': 2})
-plt.xlabel('Observed Naturalness Rating')
-plt.ylabel('Original Naturalness Rating')
-plt.legend(title='Condition')
-sns.despine()
-plt.tight_layout()
-plt.savefig('./figures/Naturalness_vs_Original.png', dpi=600)
-plt.show()
+# plt.figure(figsize=(10, 6))
+# sns.scatterplot(x='naturalness', y='Perc_Nat', hue='Condition', data=img_rating_summary, alpha=0.5)
+# sns.regplot(x='naturalness', y='Perc_Nat', data=img_rating_summary, scatter=False,
+#             line_kws={'color': 'red', 'linewidth': 2})
+# plt.xlabel('Observed Naturalness Rating')
+# plt.ylabel('Original Naturalness Rating')
+# plt.legend(title='Condition')
+# sns.despine()
+# plt.tight_layout()
+# plt.savefig('./figures/Naturalness_vs_Original.png', dpi=600)
+# plt.show()
 
 # Create the plot
 plt.figure(figsize=(10, 6))
@@ -341,7 +341,7 @@ plt.savefig('./figures/HighFreqOptionByCondition_Task.png', dpi=600)
 plt.show()
 
 # Plot deck selections
-g = sns.catplot(data=deck_summary, x='Condition', y='ChoiceRate', hue='keyResponse', row='Task', col='Order',
+g = sns.catplot(data=deck_summary, x='Condition', y='ChoiceRate_z', hue='keyResponse', row='Task', col='Order',
                 errorbar='ci', kind='bar', height=5, aspect=1.2)
 g.set_axis_labels('Condition', 'Proportion Selected')
 for ax, row_val in zip(g.axes[:,0], g.row_names):

@@ -132,6 +132,34 @@ summary(model)
 plot(allEffects(model))
 
 # ==============================================================================
+# General Linear Model for images
+# ==============================================================================
+stimuli_info <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/stimuli/stimuli_influence.csv")
+nature <- stimuli_info %>%
+  filter(Category == "Nature")
+urban <- stimuli_info %>%
+  filter(Category == "Urban")
+inf <- glm(Influence ~ poly(Semantic_PC1, 2), data=stimuli_info)
+summary(inf)
+plot(allEffects(inf))
+
+inf <- glm(Influence ~ sky+grass+plant+water+sea+fence+path+river+bench+pole+
+           building+tree+earth+rock+streetlight+ashcan+table+wall+chair+signboard+
+             stairs+pot+sculpture+sidewalk+railing+road+person+mountain+lake+floor
+           +car+traffic.light, data=urban)
+summary(inf)
+plot(allEffects(inf))
+
+inf <- glm(Influence ~ (Hue+SDHue+Bright+SDBright+Saturaton+SDSat+Contrast+
+             Dissimilarity+Homogeneity+Energy+Correlation+MeanTexture+SDTexture+
+             Entropy+EdgeCount+CornerMean+CornerSD+CornerCount+ContourMeanLength+
+             ContourSDLength+ContourMeanArea+ContourSDArea+ContourCount+AsymmetryV+
+             AsymmetryH+KPMeanSize+KPSDSize+KPMeanStrength+KPSDStrength+KPMeanAngle+
+             KPSDAngle+KPCount)*Category, data=stimuli_info)
+summary(inf)
+plot(allEffects(inf))
+
+# ==============================================================================
 # Behavioral Analysis
 # ==============================================================================
 model <- lmer(BestOption ~ Condition + Block + (1|Subnum), data = igt_summary)
@@ -185,7 +213,7 @@ model <- glm(BestOption_z_IGT ~ Condition + BestOption_z_SGT, data = igt_2nd)
 summary(model)
 plot(allEffects(model))
 
-model <- glm(LoseShift_SGT ~ Condition + LoseShift_IGT, data = sgt_2nd)
+model <- glm(BestOption_Optim_z_Diff ~ Condition, data = sgt_2nd)
 summary(model)
 plot(allEffects(model))
 
@@ -193,7 +221,7 @@ model <- lmer(HighFreqOption ~ Condition + (1|Subnum), data = dm_data)
 summary(model)
 plot(allEffects(model))
 
-model <- glm(WSLS_Diff ~ Condition, data = igt_sgt_wide)
+model <- glm(t_Diff_z ~ Condition, data = igt_sgt_wide)
 summary(model)
 plot(allEffects(model))
 
