@@ -50,6 +50,7 @@ for metric in ['BestOption', 'HighFreqOption', 'HighMagOption']:
 # Calculate z-scores grouped by task
 for col in ['BestOption', 'HighFreqOption', 'HighMagOption', 'BestOption_Optim', 'HighFreqOption_Optim', 'HighMagOption_Optim']:
     dm_summary[f'{col}_z'] = dm_summary.groupby('Task')[col].transform(z_score)
+    dm_summary[f'{col}_z'] = dm_summary.groupby('Task')[col].transform(z_score)
 
 # From dm_data, extract the switch rate and win-stay lose-shift rates
 dm_prev = dm_data.copy()
@@ -118,7 +119,7 @@ deck_summary_task_wide = deck_summary.pivot_table(index=['Subnum', 'Condition', 
 deck_summary_task_wide.columns = [f'{task}_{deck}' for task, deck in deck_summary_task_wide.columns.to_flat_index()]
 dm_summary = pd.merge(dm_summary, deck_summary_task_wide, on=['Subnum', 'Condition', 'Task', 'Order'], how='left')
 dm_summary = pd.merge(dm_summary, dm_switch_summary, on=['Subnum', 'Condition', 'Task', 'Order'], how='left')
-dm_summary .to_csv('./data/dm_summary.csv', index=False)
+dm_summary.to_csv('./data/dm_summary.csv', index=False)
 
 task_2nd_summary = dm_summary[dm_summary['TaskCode'] == 2].copy()
 
@@ -158,7 +159,7 @@ for con in ['Nature', 'Urban', 'Control']:
     print(f't-statistic: {ttest_result["T"].values[0]:.4f}, p-value: {ttest_result["p-val"].values[0]:.4f}, n={len(subset)}')
     p.append(ttest_result["p-val"].values[0])
 
-anova = pg.anova(dv='BestOption_z_Diff', between='Condition', data=IGT_SGT_summary_wide, detailed=True)
+anova = pg.anova(dv='BestOption_z_Diff', between='Condition', data=dm_summary_task_wide, detailed=True)
 pairwise = pg.pairwise_tests(dv='BestOption_z_Diff', between='Condition', data=IGT_SGT_summary_wide, padjust='fdr_bh')
 print(anova)
 print(pairwise)
@@ -167,20 +168,20 @@ print(pairwise)
 p_adjusted = pg.multicomp(pvals=p, method='fdr_bh')
 print(f'Adjusted p-values for one-sample t-tests: {p_adjusted[1]}')
 
-# # Plot IGT-SGT results
+# Plot IGT-SGT results
 # # keep MDS140 participants only for the nature condition
 # dm_summary_subset = dm_summary_task_wide[(dm_summary_task_wide['Condition'] == 'Nature') & (dm_summary_task_wide['Subnum'].isin(MDS_140_participants))].copy()
 # dm_summary_subset = pd.concat([dm_summary_subset,
 #                                dm_summary_task_wide[dm_summary_task_wide['Condition'] != 'Nature']], ignore_index=True)
 # dm_summary_subset['Condition'] = pd.Categorical(dm_summary_subset['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
-# dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
-# g = sns.catplot(data=dm_summary_subset, x='Condition', y='BestOption', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
-#                 height=4, aspect=1.2)
-# g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
-# g.set_titles('{col_name} - {row_name}')
-# g.despine()
-# plt.savefig('./figures/BestOptionByCondition_IGT_SGT.png', dpi=600)
-# plt.show()
+dm_summary['Condition'] = pd.Categorical(dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+g = sns.catplot(data=dm_summary, x='Condition', y='BestOption', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',
+                height=4, aspect=1.2)
+g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
+g.set_titles('{col_name} - {row_name}')
+g.despine()
+plt.savefig('./figures/BestOptionByCondition_IGT_SGT.png', dpi=600)
+plt.show()
 
 # difference
 palette = sns.color_palette('deep')
@@ -197,7 +198,7 @@ def upward_only(group):
     se = group.sem()
     return (np.zeros_like(se), se)   # lower=0, upper=se
 
-g = sns.catplot(data=IGT_SGT_summary_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', errorbar='se', kind='bar',
+g = sns.catplot(data=IGT_SGT_summary_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', errorbar='ci', kind='bar',
                 height=5, aspect=1.2, palette=palette_custom)
 g.set_axis_labels('', 'Performance Improvement (z-score)', fontproperties=prop)
 # x and y tick labels
@@ -324,12 +325,12 @@ g.despine()
 plt.savefig('./figures/within_subj_diff.png', dpi=600)
 plt.show()
 
-g = sns.scatterplot(data=IGT_SGT_summary_wide, x='BestOption_Optim_z_Diff', y='Semantic_PC1', hue='Condition')
+# g = sns.scatterplot(data=IGT_SGT_summary_wide, x='BestOption_Optim_z_Diff', y='Semantic_PC1', hue='Condition')
 # g.set_axis_labels('Condition', 'Proportion of Best Option Selected')
 # g.set_titles('{col_name}')
 # g.despine()
-plt.savefig('./figures/within_subj_diff.png', dpi=600)
-plt.show()
+# plt.savefig('./figures/within_subj_diff.png', dpi=600)
+# plt.show()
 
 # High frequency option
 g = sns.catplot(data=dm_summary, x='Condition', y='BestOption', hue='Condition', row='Task', col='Order', errorbar='se', kind='bar',

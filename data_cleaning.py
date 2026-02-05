@@ -32,16 +32,20 @@ def parse_d_hms(t):
 all_participants_dfs = []
 i = 0
 SGT_IGT_folder_directory = ['./data/Data_SGT_IGT']
-IGT_SGT_folder_directory = ['./data/IGT_SGT_Reduced']
+IGT_SGT_folder_directory = ['./data/Data_IGT_SGT']
+metadata_folder_directory = ['./data/Metadata']
 behavioral_list = ['React', 'Reward', 'keyResponse', 'Trial', 'Bank']
 # stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
 stimuli_info = pd.read_csv('./stimuli/visual_features_with_naturalness.csv')
 
 # read json metadata
-with open('./data/jatos_results_metadata_20260128160104.json', 'r') as f:
-    metadata = json.load(f)
-
-metadata = metadata['data'][0]['studyResults']
+metadata = []
+metadata_directory = [os.path.join(metadata_folder_directory[0], file) for file in os.listdir(metadata_folder_directory[0]) if file.endswith('.json')]
+for metadata_path in metadata_directory:
+    with open(metadata_path, 'r', encoding='utf-8') as f:
+        metadata_local = json.load(f)
+        metadata.append(metadata_local['data'][0]['studyResults'])
+metadata = [item for sublist in metadata for item in sublist]
 
 # for each participant, get their result ID and duration
 result_ids = []
@@ -340,6 +344,8 @@ E2_dm_data.to_csv('./data/E2_dm_data.csv', index=False)
 
 # Quickly plot best choice rates per condition per task
 best_choice_rate = E2_dm_data.groupby(['Subnum', 'Condition', 'Task'])['BestChoice'].mean().reset_index()
+best_choice_rate_diff = best_choice_rate.pivot(index=['Subnum', 'Condition'], columns='Task', values='BestChoice').reset_index()
+best_choice_rate_diff['BestChoice_Diff'] = best_choice_rate_diff[2] - best_choice_rate_diff[1]
 best_choice_rate_by_cond = best_choice_rate.groupby(['Condition', 'Task'])['BestChoice'].mean().reset_index()
 plt.figure(figsize=(8, 6))
 sns.barplot(data=best_choice_rate, x='Task', y='BestChoice', hue='Condition', errorbar='se')
@@ -350,3 +356,8 @@ plt.ylim(0, 0.75)
 sns.despine()
 plt.savefig('./figures/E2_Best_Choice_Rate_by_Condition_and_Task.png', dpi=600)
 plt.close()
+
+# anova
+import pingouin as pg
+anova = pg.anova(dv='BestChoice_Diff', between='Condition', data=best_choice_rate_diff, detailed=True)
+pairwise = pg.pairwise_tests(dv='BestChoice_Diff', between='Condition', data=best_choice_rate_diff, padjust='fdr_bh')
