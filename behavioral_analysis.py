@@ -198,10 +198,9 @@ def upward_only(group):
     se = group.sem()
     return (np.zeros_like(se), se)   # lower=0, upper=se
 
-g = sns.catplot(data=IGT_SGT_summary_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', errorbar='ci', kind='bar',
+g = sns.catplot(data=IGT_SGT_summary_wide, x='Condition', y='BestOption_Optim_z_Diff', hue='Condition', errorbar='se', kind='bar',
                 height=5, aspect=1.2, palette=palette_custom)
 g.set_axis_labels('', 'Performance Improvement (z-score)', fontproperties=prop)
-# x and y tick labels
 g.set_xticklabels(fontproperties=prop, fontsize=18)
 g.set_yticklabels(fontproperties=prop, fontsize=12)
 # x and y labels
@@ -209,6 +208,7 @@ for ax in g.axes.flat:
     ax.yaxis.label.set_fontproperties(prop)
     ax.yaxis.label.set_fontsize(20)
 g.despine()
+plt.title('IGT-SGT', fontproperties=prop, fontsize=22)
 plt.tight_layout()
 plt.savefig('./figures/within_subj_diff.png', dpi=600)
 plt.show()
