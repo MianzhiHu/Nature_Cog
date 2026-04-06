@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pingouin as pg
 from statsmodels.formula.api import ols
+from utils.ComputationalModeling import residual_calculator
 import matplotlib.pyplot as plt
 import seaborn as sns
 import functools
@@ -10,10 +11,10 @@ import functools
 # ======================================================================================================================
 # Define variable lists
 # ======================================================================================================================
-ratings = ['naturalness', 'disorderliness', 'aesthetic']
-# behav_perf = ['BestOption_z_Diff', 'HighFreqOption_z_Diff', 'HighMagOption_z_Diff', 'IGT_Deck_A', 'IGT_Deck_B',
-#               'IGT_Deck_C', 'IGT_Deck_D', 'SGT_Deck_A', 'SGT_Deck_B', 'SGT_Deck_C', 'SGT_Deck_D']
-behav_perf = ['BestOption_z_Diff', 'HighFreqOption_z_Diff', 'HighMagOption_z_Diff']
+identity_cols = ['Subnum', 'Condition', 'Task']
+ratings = ['naturalness', 'disorderliness', 'aesthetic', 'familiarity', 'engagement', 'fascination', 'mystery',
+           'imagability', 'control']
+behav_perf = ['BestChoice', 'Reward', 'Switch', 'WinStay', 'LoseShift']
 low_visual_features = ['Hue', 'SDHue', 'Bright', 'SDBright', 'Saturaton', 'SDSat', 'Contrast', 'Dissimilarity',
                        'Homogeneity', 'Energy', 'Correlation', 'MeanTexture', 'SDTexture', 'Entropy', 'EdgeCount',
                        'CornerMean', 'CornerSD', 'CornerCount', 'ContourMeanLength', 'ContourSDLength',
@@ -26,62 +27,59 @@ semantic_visual_features = ['sky', 'grass', 'plant', 'water', 'sea', 'fence', 'p
 #                             'tree', 'earth', 'rock', 'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road',
 #                             'person', 'mountain', 'car']
 visual_features = low_visual_features + semantic_visual_features
-model_param = ['alpha_z_IGT', 'alpha_z_SGT', 'la_z_IGT', 'la_z_SGT', 'shape_z_IGT', 'shape_z_SGT', 't_z_IGT', 't_z_SGT', 't_Diff_z',
-               'alpha_Diff_z', 'shape_Diff_z', 'la_Diff_z']
-dm_summary = pd.read_csv('./data/dm_summary.csv')
-dm_summary_wide = pd.read_csv(('./data/dm_summary_task_wide.csv'))
-deck_summary = pd.read_csv(('./data/deck_summary.csv'))
-model_summary = pd.read_csv(('./data/dm_summary_modeled_wide.csv'))
-dm_summary = dm_summary[['Subnum', 'Condition', 'Order'] + ratings + low_visual_features + semantic_visual_features].drop_duplicates()
+model_param = ['t', 'dis_sd', 'noise_sd', 'decay', 'decay_center', 'Exploration_Rate']
+
 
 if __name__ == '__main__':
     # ======================================================================================================================
     # Read PLS data
     # ======================================================================================================================
-    # pivot the deck summary to wide format
-    deck_summary_wide = deck_summary.pivot_table(index=['Subnum', 'Condition', 'Order'], columns=['Task', 'keyResponse'], values='ChoiceRate_z').reset_index()
-    deck_summary_wide.columns = ['_'.join(map(str, col)).strip() if col[1] else col[0] for col in deck_summary_wide.columns.values]
+    # Load data
+    E1_dm_summary = pd.read_csv('./data/E1_dm_summary.csv')
+    model_summary = pd.read_csv(('./data/dm_summary_modeled.csv'))
+    method = 'residual'
 
-    # combine all data into one dataframe
-    print(f'Shape: dm_summary_wide: {dm_summary_wide.shape}, dm_summary: {dm_summary.shape}, deck_summary_wide: {deck_summary_wide.shape}')
-    summary_all = functools.reduce(lambda left, right: pd.merge(left, right, on=['Subnum', 'Condition', 'Order'], how='left'),
-                                  [dm_summary_wide, deck_summary_wide, model_summary, dm_summary])
-    print(summary_all.shape)
+    # E1_dm_summary = E1_dm_summary[
+    #     identity_cols + [x for x in behav_perf if x != 'Exploration_Rate'] + visual_features + ratings]
+    # model_summary = model_summary[identity_cols + model_param + ['Exploration_Rate']]
 
-    is_pls_sem = summary_all[(summary_all['Order'] == 'IGT_SGT') &
-                             (summary_all['Condition'] != 'Control')].copy()
-    print(is_pls_sem.shape)
-    print(is_pls_sem.columns)
-    is_pls_sem.to_csv('./data/PLS_Data/PLS_Sem_IGT_SGT.csv', index=False)
+    E1_dm_summary = E1_dm_summary[identity_cols + behav_perf + visual_features + ratings]
+    model_summary = model_summary[identity_cols + model_param]
+
+    E1_overlap_cols = set(E1_dm_summary.columns).intersection(set(model_summary.columns))
+    summary_all = pd.merge(E1_dm_summary, model_summary, on=identity_cols)
+
+    residual = residual_calculator(summary_all, behav_perf + model_param, task1_name=1, task2_name=2, subj_col='Subnum',
+                                   task_col='Task', method=method)
+
+    # Save all data
+    pls_sem = residual[residual['Condition'] != 'Control'].copy()
+    print(pls_sem.shape)
+    print(pls_sem.columns)
+    pls_sem.to_csv('./data/PLS_Data/PLS_Sem_IGT_SGT.csv', index=False)
 
     # Parse the data
-    condition_list = summary_all['Condition'].unique().tolist()
-    order_list = summary_all['Order'].unique().tolist()
+    condition_list = residual['Condition'].unique().tolist()
+    behav_perf_residual = [perf + '_' + method for perf in behav_perf]
+    model_param_residual = [param + '_' + method for param in model_param]
+
+    # if behav_perf_residual is NaN, then drop the row
+    residual = residual.dropna(subset=behav_perf_residual)
 
     for cond in condition_list:
-        for order in order_list:
-            if order == 'IGT_SGT':
-                # Remove IGT columns
-                order_specific_behav_perf = [col for col in behav_perf if not col.startswith('IGT_')]
-                order_specific_model_param = [col for col in model_param if not col.endswith('_IGT')]
-            else:
-                # Remove SGT columns
-                order_specific_behav_perf = [col for col in behav_perf if not col.startswith('SGT_')]
-                order_specific_model_param = [col for col in model_param if not col.endswith('_SGT')]
+        subset = residual[residual['Condition'] == cond].copy()
+        ratings_df = subset[ratings].copy()
+        behav_perf_df = subset[behav_perf_residual].copy()
+        low_visual_features_df = subset[low_visual_features].copy()
+        semantic_visual_features_df = subset[semantic_visual_features].copy()
+        visual_features_df = subset[visual_features].copy()
+        model_param_df = subset[model_param_residual].copy()
 
-            subset = summary_all[(summary_all['Condition'] == cond) & (summary_all['Order'] == order)].copy()
-            ratings_df = subset[ratings].copy()
-            behav_perf_df = subset[order_specific_behav_perf].copy()
-            low_visual_features_df = subset[low_visual_features].copy()
-            semantic_visual_features_df = subset[semantic_visual_features].copy()
-            visual_features_df = subset[visual_features].copy()
-            model_param_df = subset[order_specific_model_param].copy()
-
-            # save to csv
-            ratings_df.to_csv(f'./data/PLS_Data/PLS_Ratings_{cond}_{order}.csv', index=False)
-            behav_perf_df.to_csv(f'./data/PLS_Data/PLS_BehavPerf_{cond}_{order}.csv', index=False)
-            low_visual_features_df.to_csv(f'./data/PLS_Data/PLS_VisualFeatures_{cond}_{order}.csv', index=False)
-            semantic_visual_features_df.to_csv(f'./data/PLS_Data/PLS_Semantic_{cond}_{order}.csv', index=False)
-            model_param_df.to_csv(f'./data/PLS_Data/PLS_ModelParams_{cond}_{order}.csv', index=False)
+        # save to csv
+        ratings_df.to_csv(f'./data/PLS_Data/PLS_Ratings_{cond}.csv', index=False)
+        behav_perf_df.to_csv(f'./data/PLS_Data/PLS_BehavPerf_{cond}.csv', index=False)
+        low_visual_features_df.to_csv(f'./data/PLS_Data/PLS_VisualFeatures_{cond}.csv', index=False)
+        semantic_visual_features_df.to_csv(f'./data/PLS_Data/PLS_Semantic_{cond}.csv', index=False)
+        model_param_df.to_csv(f'./data/PLS_Data/PLS_ModelParams_{cond}.csv', index=False)
 
 

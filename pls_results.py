@@ -8,7 +8,7 @@ from statsmodels.stats.multitest import multipletests
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
-from pls_data_parser import behav_perf, visual_features, model_param, semantic_visual_features, low_visual_features
+from pls_data_parser import behav_perf, visual_features, model_param, semantic_visual_features, low_visual_features, ratings
 
 
 # add path to the PLS results
@@ -55,6 +55,23 @@ def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05,
 behav_visual_results = get_pls_results('PLS_behav~visual_lv_vals.mat',
                                         'PLS_behav~visual.mat',
                                         low_visual_features, method='fdr_bh', p=.05)
+
+behav_ratings_results = get_pls_results('PLS_behav~ratings_lv_vals.mat',
+                                        'PLS_behav~ratings.mat',
+                                        ratings, method='fdr_bh', p=.05)
+
+model_ratings_results = get_pls_results('PLS_model~ratings_lv_vals.mat',
+                                        'PLS_model~ratings.mat',
+                                        ratings, method='fdr_bh', p=.05)
+
+model_visual_results = get_pls_results('PLS_model~visual_lv_vals.mat',
+                                        'PLS_model~visual.mat',
+                                        low_visual_features, method='fdr_bh', p=.05)
+
+
+model_semantic_results = get_pls_results('PLS_model~semantic_lv_vals.mat',
+                                        'PLS_model~semantic.mat',
+                                        semantic_visual_features, method='fdr_bh', p=.05)
 
 behav_semantic_results = get_pls_results('PLS_behav~semantic_lv_vals.mat',
                                         'PLS_behav~semantic.mat',

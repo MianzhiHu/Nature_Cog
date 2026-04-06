@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,7 +6,7 @@ import seaborn as sns
 import pingouin as pg
 import ruptures as rpt
 from utils.ComputationalModeling import (ComputationalModels, dict_generator, moving_window_model_fitting,
-                                         parameter_extractor)
+                                         parameter_extractor, vb_model_selection)
 from utils.DualProcess import DualProcessModel
 import functools
 import ast
@@ -13,22 +14,22 @@ import ast
 # ======================================================================================================================
 # Load the data
 # ======================================================================================================================
-dm_data = pd.read_csv('./data/dm_data.csv')
-dm_summary = pd.read_csv('./data/dm_summary.csv')
-# For the purpose of 2025 Psychonomics, we only use IGT-SGT data
-dm_data = dm_data[dm_data['Order'] == 'IGT_SGT'].copy()
-dm_data['Trial'] = dm_data['Trial'].astype(int)
-dm_data['keyResponse'] = dm_data['keyResponse'].astype(int)
-dm_data['keyResponse'] = dm_data['keyResponse'] - 1
-img_data = pd.read_csv('./data/img_data.csv')
-SGT_data = dm_data[dm_data['Task'] == 'SGT'].copy()
-IGT_data = dm_data[dm_data['Task'] == 'IGT'].copy()
+E1_dm_data = pd.read_csv('./data/E1_dm_data.csv')
+E2_data = pd.read_csv('./data/E2_all_data.csv')
+E1_dm_summary = pd.read_csv('./data/E1_dm_summary.csv')
+E1_dm_data['Trial'] = E1_dm_data['Trial'].astype(int)
+E1_dm_data['KeyResponse'] = E1_dm_data['KeyResponse'].astype(int)
+E1_dm_data['KeyResponse'] = E1_dm_data['KeyResponse'] - 1
+E1_img_data = pd.read_csv('./data/E1_img_data.csv')
+E1_taskfirst_data = E1_dm_data[E1_dm_data['Task'] == 1].copy()
+E1_tasksecond_data = E1_dm_data[E1_dm_data['Task'] == 2].copy()
 
 # ======================================================================================================================
 # Data Preprocessing
 # ======================================================================================================================
-SGT_dict = dict_generator(SGT_data, 'IGT_SGT')
-IGT_dict = dict_generator(IGT_data, 'IGT_SGT')
+E1_taskfirst_dict = dict_generator(E1_taskfirst_data, 'IGT_SGT')
+E1_tasksecond_dict = dict_generator(E1_tasksecond_data, 'IGT_SGT')
+E2_dict = dict_generator(E2_data, 'IGT_SGT')
 
 # ======================================================================================================================
 # Model Fitting
@@ -38,111 +39,187 @@ delta = ComputationalModels('delta', task='IGT_SGT')
 decay = ComputationalModels('decay', task='IGT_SGT')
 delta_PVL = ComputationalModels('delta_PVL', task='IGT_SGT')
 decay_PVL = ComputationalModels('decay_PVL', task='IGT_SGT')
+decay_PVL_relative = ComputationalModels('decay_PVL_relative', task='IGT_SGT')
 delta_asymmetric = ComputationalModels('delta_asymmetric', task='IGT_SGT')
 decay_PVPE = ComputationalModels('decay_PVPE', task='IGT_SGT')
 decay_win = ComputationalModels('decay_win', task='IGT_SGT')
-# dual_process = DualProcessModel(num_trials=100, task='IGT_SGT', default_EV=0.0)
+WSLS_avg = ComputationalModels('WSLS_avg', task='IGT_SGT')
+WSLS_delta = ComputationalModels('WSLS_delta', task='IGT_SGT')
+kalman_filter = ComputationalModels('kalman_filter', task='IGT_SGT')
+kalman_decay = ComputationalModels('kalman_decay', task='IGT_SGT')
+kalman_simple = ComputationalModels('kalman_simple', task='IGT_SGT')
+kalman_filter_bonus = ComputationalModels('kalman_filter_bonus', task='IGT_SGT')
+kalman_decay_bonus = ComputationalModels('kalman_decay_bonus', task='IGT_SGT')
+dual_process = DualProcessModel(task='IGT_SGT')
 
-model_list = [delta, decay, delta_PVL, decay_PVL, delta_asymmetric, decay_PVPE, decay_win]
+# model_list = [delta, decay, delta_PVL, decay_PVL, decay_PVL_relative, delta_asymmetric, decay_PVPE, decay_win,
+#               WSLS_avg, WSLS_delta, dual_process]
+model_list = [kalman_filter, kalman_decay, kalman_simple, kalman_filter_bonus, kalman_decay_bonus]
 model_name_list = [name for name, obj in globals().items() if any(obj is m for m in model_list)]
 
 # Set window parameters
-window_size = 10
+window_size = 30
 n_iterations = 100
 
 if __name__== '__main__':
-    # # Fit SGT data overall
+    # # Fit E1 data
+    # # When fitting kalman filter models, use initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0]
     # for i, model in enumerate(model_list):
-    #     SGT_result = model.fit(SGT_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha', num_exp_restart=100)
-    #     SGT_result.to_csv(f'./data/Model/SGT_{model_name_list[i]}.csv', index=False)
-    #     IGT_result = model.fit(IGT_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha', num_exp_restart=100)
-    #     IGT_result.to_csv(f'./data/Model/IGT_{model_name_list[i]}.csv', index=False)
+    #     taskfirst_result = model.fit(E1_taskfirst_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    #                                  num_exp_restart=150, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    #     taskfirst_result.to_csv(f'./data/Model/{model_name_list[i]}_1st.csv', index=False)
+    #
+    #     tasksecond_result = model.fit(E1_tasksecond_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    #                                   num_exp_restart=150, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    #     tasksecond_result.to_csv(f'./data/Model/{model_name_list[i]}_2nd.csv', index=False)
 
-    # # Now fit the data with moving window
+    # # Now fit E1 data with moving window
     # for i , model in enumerate(model_list):
-    #     SGT_mv = moving_window_model_fitting(SGT_data, model, task='IGT_SGT', window_size=window_size,
+    #     taskfirst_mv = moving_window_model_fitting(E1_taskfirst_data, model, task='IGT_SGT', window_size=window_size,
     #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                                          num_exp_restart=10, num_training_trials=999)
-    #     SGT_mv.to_csv(f'./data/Model/Sliding Window/SGT_{model_name_list[i]}_mv.csv', index=False)
-    #     IGT_mv = moving_window_model_fitting(IGT_data, model, task='IGT_SGT', window_size=window_size,
+    #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    #     taskfirst_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_mv_1st.csv', index=False)
+    #     tasksecond_mv = moving_window_model_fitting(E1_tasksecond_data, model, task='IGT_SGT', window_size=window_size,
     #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                                          num_exp_restart=10, num_training_trials=999)
-    #     IGT_mv.to_csv(f'./data/Model/Sliding Window/IGT_{model_name_list[i]}_mv.csv', index=False)
+    #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    #     tasksecond_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_mv_2nd.csv', index=False)
+
+    # Fit E2 data
+    for i, model in enumerate(model_list):
+        taskfirst_result = model.fit(E2_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+                                     num_exp_restart=250, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+        taskfirst_result.to_csv(f'./data/Model/{model_name_list[i]}_E2.csv', index=False)
+
+    # # Now fit E2 data with moving window
+    # for i , model in enumerate(model_list):
+    #     taskfirst_mv = moving_window_model_fitting(E2_data, model, task='IGT_SGT', window_size=window_size,
+    #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    #     taskfirst_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_mv_1st.csv', index=False)
+    #     tasksecond_mv = moving_window_model_fitting(E2_data, model, task='IGT_SGT', window_size=window_size,
+    #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    #     tasksecond_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_mv_2nd.csv', index=False)
 
 
     # # ==================================================================================================================
     # # Load the model fitting results
     # # ==================================================================================================================
-    # load all model fitting results from directory
-    model_fitting_results = {}
-    model_files = ['SGT_delta.csv', 'SGT_decay.csv', 'SGT_delta_PVL.csv', 'SGT_decay_PVL.csv', 'SGT_delta_asymmetric.csv',
-                   'SGT_decay_PVPE.csv', 'SGT_decay_win.csv',
-                   'IGT_delta.csv', 'IGT_decay.csv', 'IGT_delta_PVL.csv', 'IGT_decay_PVL.csv',
-                   'IGT_delta_asymmetric.csv', 'IGT_decay_PVPE.csv', 'IGT_decay_win.csv']
-    param_map = {
-        'delta': ['t', 'alpha'],
-        'decay': ['t', 'alpha'],
-        'delta_PVL': ['t', 'alpha', 'shape', 'la'],
-        'decay_PVL': ['t', 'alpha', 'shape', 'la'],
-        'delta_asymmetric': ['t', 'alpha_pos', 'alpha_neg'],
-        'decay_PVPE': ['t', 'alpha', 'weight', 'shape'],
-        'decay_win': ['t', 'alpha']
-    }
-
-    for file in model_files:
-        name = file.replace('.csv', '')
-        task_name = name.split('_')[0]
-        model_name = '_'.join(name.split('_')[1:])
-        model_fitting_results[name] = pd.read_csv(f'./data/Model/{file}')
-        model_fitting_results[name].rename(columns={'participant_id': 'Subnum'}, inplace=True)
-        model_fitting_results[name] = parameter_extractor(model_fitting_results[name], param_name=param_map[model_name])
-        model_fitting_results[name]['Task'] = task_name
-        model_fitting_results[name]['Model'] = model_name
-        # Add condition and order information
-        condition_map = dm_data[['Subnum', 'Condition']].drop_duplicates().set_index('Subnum')['Condition']
-        order_map = dm_data[['Subnum', 'Order']].drop_duplicates().set_index('Subnum')['Order']
-        model_fitting_results[name]['Condition'] = model_fitting_results[name]['Subnum'].map(condition_map)
-        model_fitting_results[name]['Order'] = model_fitting_results[name]['Subnum'].map(order_map)
-        # remove unnecessary columns
-        cols_to_keep = ['Subnum', 'AIC', 'BIC', 'exploitation'] + param_map[model_name] + ['Task', 'Model', 'Condition', 'Order']
-        model_fitting_results[name] = model_fitting_results[name][cols_to_keep]
-        print(f'Task: {task_name}; Model: {model_name}; Mean BIC: {model_fitting_results[name]["BIC"].mean()}')
-        globals()[name] = model_fitting_results[name]
-
-    # Create a df from model fitting results containing all models
-    all_model_results = pd.concat(model_fitting_results).reset_index(level=0)
-
-    # # plot the mean BIC for each model and task and condition
-    # plt.figure(figsize=(12, 6))
-    # sns.catplot(data=exploration_summary, x='Condition', y='Exploration_Rate', hue='Task', col='Model', kind='bar', height=6, aspect=1)
-    # plt.savefig('./figures/Mean_BIC_by_Model_Task_Condition.png', dpi=600)
-    # plt.show()
+    # # load all model fitting results from directory
+    # model_fitting_results = {}
+    # folder_path = './data/Model/'
+    # model_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
+    #
+    # param_map = {
+    #     'delta': ['t', 'alpha'],
+    #     'decay': ['t', 'alpha'],
+    #     'delta_PVL': ['t', 'alpha', 'shape', 'la'],
+    #     'decay_PVL': ['t', 'alpha', 'shape', 'la'],
+    #     'decay_PVL_relative': ['t', 'alpha', 'shape', 'la'],
+    #     'delta_asymmetric': ['t', 'alpha_pos', 'alpha_neg'],
+    #     'decay_PVPE': ['t', 'alpha', 'weight', 'shape'],
+    #     'decay_win': ['t', 'alpha'],
+    #     'dual_process': ['t', 'alpha', 'subj_weight'],
+    #     'kalman_filter': ['t', 'dis_sd', 'noise_sd', 'decay', 'decay_center'],
+    #     'kalman_filter_bonus': ['t', 'dis_sd', 'noise_sd', 'decay', 'decay_center', 'exploration_bonus'],
+    #     'kalman_decay': ['t', 'dis_sd', 'noise_sd', 'decay', 'decay_center'],
+    #     'kalman_decay_bonus': ['t', 'dis_sd', 'noise_sd', 'decay', 'decay_center', 'exploration_bonus'],
+    #     'kalman_simple': ['t', 'dis_sd'],
+    #     'WSLS_avg': ['p_ws', 'p_ls'],
+    #     'WSLS_delta':['a', 'p_ws', 'p_ls']
+    # }
+    #
+    # for file in model_files:
+    #     name = file.replace('.csv', '')
+    #     task_name = name.split('_')[-1]
+    #     model_name = '_'.join(name.split('_')[:-1])
+    #     model_fitting_results[name] = pd.read_csv(f'./data/Model/{file}')
+    #     model_fitting_results[name].rename(columns={'participant_id': 'Subnum'}, inplace=True)
+    #     model_fitting_results[name] = parameter_extractor(model_fitting_results[name], param_name=param_map[model_name])
+    #     model_fitting_results[name]['Task'] = task_name
+    #     model_fitting_results[name]['Model'] = model_name
+    #     # Add condition and order information
+    #     condition_map = dm_data[['Subnum', 'Condition']].drop_duplicates().set_index('Subnum')['Condition']
+    #     model_fitting_results[name]['Condition'] = model_fitting_results[name]['Subnum'].map(condition_map)
+    #     # remove unnecessary columns
+    #     if model_name == 'dual_process':
+    #         cols_to_keep = (['Subnum', 'AIC', 'BIC', 'gau_exploitation', 'dir_exploitation'] + param_map[model_name] +
+    #                         ['Task', 'Model', 'Condition'])
+    #     else:
+    #         cols_to_keep = ['Subnum', 'AIC', 'BIC', 'exploitation'] + param_map[model_name] + ['Task', 'Model', 'Condition']
+    #     model_fitting_results[name] = model_fitting_results[name][cols_to_keep]
+    #     print(f'Task: {task_name}; Model: {model_name}; Mean BIC: {model_fitting_results[name]["BIC"].mean()}')
+    #     globals()[name] = model_fitting_results[name]
+    #
+    # # Create a df from model fitting results containing all models
+    # all_model_results = pd.concat(model_fitting_results).reset_index(level=0)
+    # # task_1_results = all_model_results[all_model_results['Task'] == '2nd'].copy()
+    # # task_1_wide = task_1_results.pivot(index='Subnum', columns='Model', values='BIC')
+    # # log_evidences = task_1_wide.values / (-2)
+    # # alpha_est, g_est = vb_model_selection(log_evidences, tol=1e-12, max_iter=50000)
+    # # print(task_1_wide.columns)
+    # # print(alpha_est)
     #
     # # Exploration all models
     # all_model_results['exploration'] = all_model_results['exploitation'].apply(ast.literal_eval)
     # df_exploded = all_model_results.explode('exploration')
-    # exploration_summary = df_exploded.groupby(['Subnum', 'Model', 'Condition', 'Order', 'Task'])['exploration'].value_counts().unstack(fill_value=0).reset_index()
-    # exploration_summary['Exploration_Rate'] = exploration_summary['exploration'] / 99
+    # exploration_summary = df_exploded.groupby(['Subnum', 'Model', 'Condition', 'Task'])['exploration'].value_counts().unstack(fill_value=0).reset_index()
+    # exploration_summary['Exploration_Rate'] = exploration_summary['exploration'] / 149
+    # exploration_summary['Exploration_Rate_z'] = exploration_summary.groupby(['Model'])['Exploration_Rate'].transform(lambda x: (x - x.mean()) / x.std())
+    #
+    # # Calculate the difference in exploration rate by task
+    # exploration_wide = exploration_summary.pivot_table(
+    #     index=['Subnum', 'Model', 'Condition'],
+    #     columns='Task',
+    #     values='Exploration_Rate'
+    # ).reset_index()
+    # exploration_wide.columns.name = None
+    # exploration_wide['Exploration_Diff'] = exploration_wide['2nd'] - exploration_wide['1st']
+    # exploration_wide['Exploration_Diff_z'] = exploration_wide.groupby(['Model'])['Exploration_Diff'].transform(lambda x: (x - x.mean()) / x.std())
+    #
+    #
+    # # plot the mean BIC for each model and task and condition
+    # plt.figure(figsize=(12, 6))
+    # sns.catplot(data=exploration_summary, x='Condition', y='Exploration_Rate_z', hue='Task', col='Model', kind='bar', height=6, aspect=1, errorbar='ci')
+    # plt.savefig('./figures/Mean_BIC_by_Model_Task_Condition.png', dpi=600)
+    # plt.show()
+    #
+    # # plot the mean BIC for each model and task and condition
+    # plt.figure(figsize=(12, 6))
+    # sns.catplot(data=exploration_wide, x='Condition', y='Exploration_Diff', col='Model', kind='bar', height=6, aspect=1)
+    # plt.savefig('./figures/Exploration_Diff_by_Model_Task_Condition.png', dpi=600)
+    # plt.show()
+    #
+    #
+    # selected_model = 'kalman_decay'
+    # selected_model_results = pd.concat([
+    #     globals()[f'{selected_model}_1st'],
+    #     globals()[f'{selected_model}_2nd']
+    # ], ignore_index=True)
+    # dm_summary_modeled = pd.concat([selected_model_results], ignore_index=True)
+    # dm_summary_modeled = pd.merge(dm_summary_modeled, exploration_summary[exploration_summary['Model'] == selected_model],
+    #                               on=['Subnum', 'Condition', 'Task', 'Model'], how='left')
+    # # Rename task with 1st being 1 as integer and 2nd being 2 as integer too
+    # task_mapping = {'1st': 1, '2nd': 2}
+    # dm_summary_modeled['Task'] = dm_summary_modeled['Task'].map(task_mapping)
+    # dm_summary_modeled = pd.merge(dm_summary_modeled, dm_summary,
+    #                               on=['Subnum', 'Condition', 'Task'], how='left')
+    # for param in param_map[selected_model]:
+    #     dm_summary_modeled[f'{param}_z'] = dm_summary_modeled.groupby(['Task'])[param].transform(lambda x: (x - x.mean()) / x.std())
+    # dm_summary_modeled.to_csv('./data/dm_summary_modeled.csv', index=False)
+    # exploration = df_exploded[df_exploded['Model'] == selected_model]
+    # exploration['Task'] = exploration['Task'].map(task_mapping)
+    # exploration.to_csv('./data/exploration_data.csv', index=False)
 
-    selected_model = 'decay_PVL'
-    selected_model_results = pd.concat([
-        globals()[f'SGT_{selected_model}'],
-        globals()[f'IGT_{selected_model}']
-    ], ignore_index=True)
-    dm_summary_modeled = dm_summary.merge(selected_model_results, on=['Subnum', 'Condition','Task', 'Order'], how='left')
-    for param in param_map[selected_model]:
-        dm_summary_modeled[f'{param}_z'] = dm_summary_modeled.groupby(['Task'])[param].transform(lambda x: (x - x.mean()) / x.std())
-    dm_summary_modeled.to_csv('./data/dm_summary_modeled.csv', index=False)
-
-    # Now pivot the modeled summary to wide format
-    dm_summary_modeled_wide = dm_summary_modeled.pivot_table(index=['Subnum', 'Condition', 'Order'], columns=['Task'],
-                                                              values=['AIC', 'BIC', 't', 'alpha', 'shape', 'la', 't_z',
-                                                                      'alpha_z', 'shape_z', 'la_z']).reset_index()
-    dm_summary_modeled_wide.columns = ['_'.join(map(str, col)).strip() if col[1] else col[0] for col in dm_summary_modeled_wide.columns.values]
-    for param in param_map[selected_model]:
-        dm_summary_modeled_wide[f'{param}_Diff'] = dm_summary_modeled_wide[f'{param}_SGT'] - dm_summary_modeled_wide[f'{param}_IGT']
-        dm_summary_modeled_wide[f'{param}_Diff_z'] = dm_summary_modeled_wide[f'{param}_Diff'].transform(lambda x: (x - x.mean()) / x.std())
-    dm_summary_modeled_wide.to_csv('./data/dm_summary_modeled_wide.csv', index=False)
+    # # Now pivot the modeled summary to wide format
+    # dm_summary_modeled_wide = dm_summary_modeled.pivot_table(index=['Subnum', 'Condition', 'Order'], columns=['Task'],
+    #                                                           values=['AIC', 'BIC', 't', 'alpha', 'shape', 'la', 't_z',
+    #                                                                   'alpha_z', 'shape_z', 'la_z']).reset_index()
+    # dm_summary_modeled_wide.columns = ['_'.join(map(str, col)).strip() if col[1] else col[0] for col in dm_summary_modeled_wide.columns.values]
+    # for param in param_map[selected_model]:
+    #     dm_summary_modeled_wide[f'{param}_Diff'] = dm_summary_modeled_wide[f'{param}_SGT'] - dm_summary_modeled_wide[f'{param}_IGT']
+    #     dm_summary_modeled_wide[f'{param}_Diff_z'] = dm_summary_modeled_wide[f'{param}_Diff'].transform(lambda x: (x - x.mean()) / x.std())
+    # dm_summary_modeled_wide.to_csv('./data/dm_summary_modeled_wide.csv', index=False)
 
     #
     #

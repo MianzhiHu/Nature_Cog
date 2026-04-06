@@ -16,27 +16,38 @@ library(randomForestExplainer)
 # ==============================================================================
 # Read the data
 # ==============================================================================
-dm_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_data_summary.csv")
+dm_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_dm_data.csv")
 dm_summary <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary.csv")
 dm_summary_wide <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_task_wide.csv")
 dm_summary_modeled <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_modeled.csv")
 dm_summary_modeled_wide <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_modeled_wide.csv")
-deck_summary <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/deck_summary.csv")
-IGT_SGT_summary <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/IGT_SGT_summary.csv")
+
+wsls_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_switch.csv")
+exploration <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/exploration_data.csv")
 
 delta <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Delta_Results.csv")
 decay <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Decay_Results.csv")
 
 
 # Possible levels: ('Nature', 'Urban', 'Control') or ('Urban', 'Nature', 'Control')
+dm_data$Condition <- factor(dm_data$Condition, levels = c('Control', 'Nature', 'Urban')) 
 dm_data$Condition <- factor(dm_data$Condition, levels = c('Nature', 'Urban', 'Control')) 
+dm_data$Task <- factor(dm_data$Task, levels = c(1, 2), labels = c("First", "Second"))
 dm_summary$Condition <- factor(dm_summary$Condition, levels = c('Nature', 'Urban', 'Control'))
-dm_summary_modeled$Condition <- factor(dm_summary_modeled$Condition, levels = c('Nature', 'Urban', 'Control'))
+
+dm_summary_modeled$Condition <- factor(dm_summary_modeled$Condition, levels = c('Control', 'Nature', 'Urban'))
+dm_summary_modeled$Task <- factor(dm_summary_modeled$Task, levels = c(1, 2), labels = c("First", "Second"))
+
 dm_summary_modeled_wide$Condition <- factor(dm_summary_modeled_wide$Condition, levels = c('Nature', 'Urban', 'Control'))
 dm_summary_wide$Condition <- factor(dm_summary_wide$Condition, levels = c('Nature', 'Urban', 'Control'))
-IGT_SGT_summary$Condition <- factor(IGT_SGT_summary$Condition, levels = c('Nature', 'Baseline', 'Urban', 'Control'))
-deck_summary$Condition <- factor(deck_summary$Condition, levels = c('Nature', 'Urban', 'Control'))
-deck_summary$keyResponse <- factor(deck_summary$keyResponse, levels = c(1, 2, 3, 4), labels = c('A', 'B', 'C', 'D'))
+
+wsls_data$Condition <- factor(wsls_data$Condition, levels = c('Control', 'Nature', 'Urban'))
+wsls_data$Task <- factor(wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
+
+exploration$Condition <- factor(exploration$Condition, levels = c('Control', 'Nature', 'Urban'))
+exploration$Task <- factor(exploration$Task, levels = c(1, 2), labels = c("First", "Second"))
+exploration$exploration <- factor(exploration$exploration, levels = c("exploitation", "exploration"))
+
 
 dm_summary$TaskCode <- factor(dm_summary$Condition)
 dm_data$TaskCode <- factor(dm_data$TaskCode) 
@@ -165,8 +176,13 @@ plot(allEffects(inf))
 model <- lmer(BestOption ~ Condition + Block + (1|Subnum), data = igt_summary)
 summary(model)
 
-model <- glmer(BestOption ~ Condition + TaskCode + Block + (1|Subnum), family='binomial', data = igt)
+model <- glmer(BestChoice ~ Condition * Task + Block + (1|Subnum), family='binomial', data = dm_data)
 summary(model)
+plot(allEffects(model))
+
+model <- lmer(Reward ~ Condition * Task + Block + (1|Subnum), data = dm_data)
+summary(model)
+plot(allEffects(model))
 
 model <- lmer(BestOption ~ Condition * Block + naturalness + disorderliness
               + aesthetic + (1|Subnum), data = igt_summary)
@@ -180,27 +196,6 @@ summary(model)
 
 # ==============================================================================
 # Random
-igt_sgt <- dm_data %>%
-  filter(Task == 'SGT') %>%
-  filter(Order == 'IGT_SGT')
-
-sgt_igt <- dm_data %>%
-  filter(Task == 'IGT') %>%
-  filter(Order == 'SGT_IGT')
-
-sgt_2nd <- dm_summary_wide %>%
-  filter(Order == 'IGT_SGT')
-
-igt_2nd <- dm_summary %>%
-  filter(Order == 'SGT_IGT')
-
-dm_summary_modeled <- dm_summary_modeled %>%
-  filter(Order == 'IGT_SGT')
-
-dm_summary_modeled_wide <- dm_summary_modeled_wide %>%
-  filter(Order == 'IGT_SGT')
-
-
 model <- lmer(BestOption_z ~ Condition * Task * TaskCode + Order  + (1|Subnum), data = dm_summary)
 summary(model)
 plot(allEffects(model))
@@ -238,7 +233,16 @@ model <- glm(ChoiceRate_z ~ Condition * keyResponse, data = deck_summary_igt_sgt
 summary(model)
 plot(allEffects(model))
 
-model <- glm(t ~ Condition + Task, data = dm_summary_modeled)
+model <- glm(Reward ~ Condition * Task, data = dm_summary_modeled)
+summary(model)
+plot(allEffects(model))
+
+model <- glm(Exploration_Rate ~ (naturalness+disorderliness+aesthetic+familiarity
+             +engagement+fascination+mystery+imagability+control) * Task, data = dm_summary_modeled)
+summary(model)
+plot(allEffects(model))
+
+model <- glmer(exploration ~ Condition * Task + (1|Subnum), family=binomial, data = exploration)
 summary(model)
 plot(allEffects(model))
 
@@ -246,6 +250,20 @@ model <- glm(la_Diff_z ~ Condition, data = dm_summary_modeled_wide)
 summary(model)
 plot(allEffects(model))
 
+# ==============================================================================
+# Win-Stay-Lose-Shift Behavior
+# ==============================================================================
+switch_model <- glmer(Switch ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
+summary(switch_model)
+plot(allEffects(switch_model))
+
+ws_model <- glmer(WinStay ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
+summary(ws_model)
+plot(allEffects(ws_model))
+
+ls_model <- glmer(LoseShift ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
+summary(ls_model)
+plot(allEffects(ls_model))
 
 
 # PLS SEM
