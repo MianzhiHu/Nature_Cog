@@ -12,21 +12,23 @@ library(changepoint)
 library(seminr)
 library(randomForest)
 library(randomForestExplainer)
+library(tidyr)
+library(purrr)
+library(tibble)
+library(readr)
 
 # ==============================================================================
 # Read the data
 # ==============================================================================
 dm_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_dm_data.csv")
 dm_summary <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary.csv")
-dm_summary_wide <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_task_wide.csv")
+dm_summary_wide <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_dm_summary_task_wide.csv")
 dm_summary_modeled <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_modeled.csv")
-dm_summary_modeled_wide <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_modeled_wide.csv")
+dm_composite <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/agg_condition_value_counts.csv")
 
 wsls_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_switch.csv")
 exploration <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/exploration_data.csv")
-
-delta <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Delta_Results.csv")
-decay <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/Model/Sliding Window/Decay_Results.csv")
+E1_behavioral_mw <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_behavioral_moving_window.csv")
 
 
 # Possible levels: ('Nature', 'Urban', 'Control') or ('Urban', 'Nature', 'Control')
@@ -38,46 +40,38 @@ dm_summary$Condition <- factor(dm_summary$Condition, levels = c('Nature', 'Urban
 dm_summary_modeled$Condition <- factor(dm_summary_modeled$Condition, levels = c('Control', 'Nature', 'Urban'))
 dm_summary_modeled$Task <- factor(dm_summary_modeled$Task, levels = c(1, 2), labels = c("First", "Second"))
 
-dm_summary_modeled_wide$Condition <- factor(dm_summary_modeled_wide$Condition, levels = c('Nature', 'Urban', 'Control'))
-dm_summary_wide$Condition <- factor(dm_summary_wide$Condition, levels = c('Nature', 'Urban', 'Control'))
-
 wsls_data$Condition <- factor(wsls_data$Condition, levels = c('Control', 'Nature', 'Urban'))
 wsls_data$Task <- factor(wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
+wsls_data$exploration <- factor(wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
+
+dm_composite$agg_Condition <- factor(dm_composite$agg_Condition, levels = c('Mid Composite Score', 'High Composite Score', 'Low Composite Score'))
+dm_composite$Task <- factor(dm_composite$Task, levels = c(1, 2), labels = c("First", "Second"))
+dm_composite$exploration <- factor(dm_composite$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
+
 
 exploration$Condition <- factor(exploration$Condition, levels = c('Control', 'Nature', 'Urban'))
 exploration$Task <- factor(exploration$Task, levels = c(1, 2), labels = c("First", "Second"))
 exploration$exploration <- factor(exploration$exploration, levels = c("exploitation", "exploration"))
 
+E1_behavioral_mw$Condition <- factor(E1_behavioral_mw$Condition, levels = c('Control', 'Nature', 'Urban'))
+E1_behavioral_mw$Task <- factor(E1_behavioral_mw$Task, levels = c(1, 2), labels = c("First", "Second"))
 
-dm_summary$TaskCode <- factor(dm_summary$Condition)
-dm_data$TaskCode <- factor(dm_data$TaskCode) 
-
-delta$Condition <- factor(delta$Condition, levels = c('Nature', 'Urban', 'Control'))
-decay$Condition <- factor(decay$Condition, levels = c('Nature', 'Urban', 'Control'))
-
-igt_sgt_wide <- dm_summary_wide %>%
-  filter(Order == 'IGT_SGT')
-
-delta_nature <- delta %>%
-  filter(Condition=='Nature')
-
-delta_igt <- delta %>%
-  filter(task_id=='2')
-
-igt <- dm_data %>%
-  filter(Task=='IGT')
-
-sgt <- dm_data %>%
-  filter(Task=='SGT')
-
-deck_summary_igt_sgt <- deck_summary %>%
-  filter(Task=='SGT' & Order == 'IGT_SGT')
+dm_summary_modeled_wide <- dm_summary_modeled %>%
+  pivot_wider(
+    id_cols = c(Subnum, Condition),
+    names_from = Task,
+    values_from = t,
+    names_prefix = "Task_"
+  )
 
 # ==============================================================================
 # Generalized Additive Mixed Models
 # ==============================================================================
-m <- gam(alpha ~ Condition + s(window_id, by=Condition) + s(Subnum, bs="re"),
-         data = delta)
+m <- gam(
+  Exploration ~ Condition + s(WindowStart) + s(WindowStart, by = Condition) + s(Subnum, bs = "re"),
+  data = E1_behavioral_mw_2,
+  method = "REML"
+)
 
 plot(m)
 summary(m)
@@ -109,27 +103,6 @@ anova(mixed_effect)
 p <- plot_model(mixed_effect,type  = "pred", 
                 terms = c("window_id [all]", "Condition"))
 p + geom_vline(xintercept = 91, linetype = "dotted")
-
-# ==============================================================================
-# Change-point analysis
-# ==============================================================================
-# Function to detect change-point for each participant:
-detect_change <- function(data_sub){
-  # You can adjust method and penalty as needed
-  cpt <- cpt.meanvar(data_sub$alpha, method = "PELT", penalty = "BIC")
-  return(cpts(cpt)[1]) # First detected change-point
-}
-
-# Run change-point detection per participant (only Task 2)
-change_points <- delta %>%
-  # filter(task_id == 2) %>%
-  group_by(Subnum, Condition) %>%
-  summarise(change_point_trial = detect_change(cur_data()),
-            .groups = "drop")
-
-change_points
-
-cpt <- cpts(cpt.meanvar(delta$alpha, method = "PELT", penalty = "BIC"))
 
 # ==============================================================================
 # General Linear Model for Differences
@@ -173,7 +146,7 @@ plot(allEffects(inf))
 # ==============================================================================
 # Behavioral Analysis
 # ==============================================================================
-model <- lmer(BestOption ~ Condition + Block + (1|Subnum), data = igt_summary)
+model <- glm(Reward ~ Exploration_Rate * Condition * Task, data = dm_summary_modeled)
 summary(model)
 
 model <- glmer(BestChoice ~ Condition * Task + Block + (1|Subnum), family='binomial', data = dm_data)
@@ -191,69 +164,28 @@ summary(model)
 model <- lmer(alpha ~ Condition + window_id + (1|Subnum), data = delta_igt)
 summary(model)
 
-model <- lmer(t ~ Condition + window_id + (1|Subnum), data = delta_igt)
+model <- lmer(t ~ Condition * Task + (1|Subnum), data = dm_summary_modeled)
 summary(model)
 
-# ==============================================================================
-# Random
-model <- lmer(BestOption_z ~ Condition * Task * TaskCode + Order  + (1|Subnum), data = dm_summary)
+model <- glm(Task_Second ~ Condition * Task_First, data = dm_summary_modeled_wide)
 summary(model)
-plot(allEffects(model))
-
-model <- glmer(BestOption ~ Condition * TaskCode + (1|Subnum), family=binomial, data = sgt)
-summary(model)
-plot(allEffects(model))
-
-model <- glm(BestOption_z_IGT ~ Condition + BestOption_z_SGT, data = igt_2nd)
-summary(model)
-plot(allEffects(model))
-
-model <- glm(BestOption_Optim_z_Diff ~ Condition, data = sgt_2nd)
-summary(model)
-plot(allEffects(model))
-
-model <- lmer(HighFreqOption ~ Condition + (1|Subnum), data = dm_data)
-summary(model)
-plot(allEffects(model))
-
-model <- glm(t_Diff_z ~ Condition, data = igt_sgt_wide)
-summary(model)
-plot(allEffects(model))
-
-model <- glmer(BestOption ~ Condition + (1|Subnum), family=binomial, data = IGT_SGT_summary)
-summary(model)
-plot(allEffects(model))
-
-
-model <- glm(WSLS_Diff_z ~ Condition * Order, data = dm_summary_wide)
-summary(model)
-plot(allEffects(model))
-
-model <- glm(ChoiceRate_z ~ Condition * keyResponse, data = deck_summary_igt_sgt)
-summary(model)
-plot(allEffects(model))
-
-model <- glm(Reward ~ Condition * Task, data = dm_summary_modeled)
-summary(model)
-plot(allEffects(model))
-
-model <- glm(Exploration_Rate ~ (naturalness+disorderliness+aesthetic+familiarity
-             +engagement+fascination+mystery+imagability+control) * Task, data = dm_summary_modeled)
-summary(model)
-plot(allEffects(model))
 
 model <- glmer(exploration ~ Condition * Task + (1|Subnum), family=binomial, data = exploration)
-summary(model)
-plot(allEffects(model))
-
-model <- glm(la_Diff_z ~ Condition, data = dm_summary_modeled_wide)
 summary(model)
 plot(allEffects(model))
 
 # ==============================================================================
 # Win-Stay-Lose-Shift Behavior
 # ==============================================================================
+optimal_model <- glmer(BestChoice ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
+summary(optimal_model)
+plot(allEffects(optimal_model))
+
 switch_model <- glmer(Switch ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
+summary(switch_model)
+plot(allEffects(switch_model))
+
+switch_model <- glmer(exploration ~ agg_Condition * Task  + (1|Subnum), family=binomial, data = dm_composite)
 summary(switch_model)
 plot(allEffects(switch_model))
 
@@ -265,23 +197,223 @@ ls_model <- glmer(LoseShift ~ Condition * Task + (1|Subnum), family=binomial, da
 summary(ls_model)
 plot(allEffects(ls_model))
 
+ex_model <- glmer(exploration ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
+summary(ex_model)
+plot(allEffects(ex_model))
 
+# ==============================================================================
+# Behavioral Moving Window
+# ==============================================================================
+E1_behavioral_mw_2 <- E1_behavioral_mw %>%
+  filter(Task=='Second')
+wsls_data_2 <- wsls_data %>%
+  filter(Task=='Second')
+
+bmw_e1 <- lmer(Exploration ~ Condition * poly(WindowStart, 2) + (1 + poly(WindowStart, 2) | Subnum), data = E1_behavioral_mw_2)
+summary(bmw_e1)
+plot(allEffects(bmw_e1))
+
+bmw_e1 <- glmer(Switch ~ Condition * poly(Trial, 2) + (1|Subnum), family=binomial, data = wsls_data_2)
+summary(bmw_e1)
+plot(allEffects(bmw_e1))
+
+# ==============================================================================
+# Extract E1 residuals
+# ==============================================================================
+# ID columns
+id_col <- "Subnum"
+task_col <- "Task"
+task1_label <- 'First'
+task2_label <- 'Second'
+linear_behavior_vars <- c(
+  "BestChoice",
+  "Reward",
+  "Switch",
+  "WinStay",
+  "LoseShift",
+  "exploration",
+  "t",
+  "dis_sd",
+  "noise_sd",
+  "decay",
+  "decay_center"
+)
+
+quadratic_behavior_vars <- c(
+  "BestChoice",
+  "Reward",
+  "Switch",
+  "WinStay",
+  "LoseShift",
+  "Exploration"
+)
+
+# Define functions to extract residuals
+extract_linear_residuals <- function(data, var, task1, task2) {
+  
+  col_task1 <- paste0(var, "_", task1)
+  col_task2 <- paste0(var, "_", task2)
+  
+  # Filter data
+  tmp <- data %>%
+    dplyr::select(all_of(id_col), all_of(col_task1), all_of(col_task2)) %>%
+    dplyr::filter(
+      !is.na(.data[[col_task1]]),
+      !is.na(.data[[col_task2]])
+    )
+  
+  # Fit Task2 ~ Task1
+  formula_txt <- paste(col_task2, "~", col_task1)
+  model <- lm(as.formula(formula_txt), data = tmp)
+  
+  # Add residual columns
+  tmp[[paste0(var, "_resid")]] <- resid(model)
+  
+  cat("\n=========================\n")
+  cat("Behavior index:", var, "\n")
+  print(summary(model))
+  
+  tmp %>%
+    dplyr::select(
+      all_of(id_col),
+      all_of(paste0(var, "_resid"))
+    )
+}
+
+extract_mw_quadratic_residuals <- function(data, var, id_col = "Subnum") {
+  
+  formula_txt <- paste0(var, " ~ poly(WindowStart, 2) + 
+                        (1 + poly(WindowStart, 2) | ", id_col,")")
+  
+  cat("\n=========================\n")
+  cat("Fitting variable:", var, "\n")
+  cat("Formula:", formula_txt, "\n")
+  
+  model <- lmer(as.formula(formula_txt), data = data)
+  print(summary(model))
+  
+  # Extract random effects
+  re_df <- ranef(model)[[id_col]] %>%
+    as.data.frame() %>%
+    rownames_to_column(var = id_col)
+  
+  # Rename columns to include variable name
+  names(re_df) <- c(
+    id_col,
+    paste0(var, "_2nd_Intercept"),
+    paste0(var, "_2nd_Linear"),
+    paste0(var, "_2nd_Quadratic")
+  )
+  
+  # Match ID type to original data
+  if (is.numeric(data[[id_col]])) {
+    re_df[[id_col]] <- as.numeric(re_df[[id_col]])
+  } else {
+    re_df[[id_col]] <- as.character(re_df[[id_col]])
+  }
+  
+  re_df
+}
+
+# Load data
+linear_residual_df <- wsls_data
+linear_residual_df <- linear_residual_df %>%
+  mutate(exploration = ifelse(exploration == "exploration", 1, 0))
+
+summary_fun <- \(x) mean(x, na.rm = TRUE)
+
+# Generate summary as grouped by task
+linear_residual_df_summary <- linear_residual_df %>%
+  group_by(.data[[id_col]], .data[[task_col]]) %>%
+  summarise(
+    across(all_of(linear_behavior_vars), summary_fun, .names = "{.col}"),
+    .groups = "drop"
+  )
+
+# Check result
+print(linear_residual_df_summary)
+
+linear_residual_df_summary_wide <- linear_residual_df_summary %>%
+  pivot_wider(
+    names_from = all_of(task_col),
+    values_from = all_of(linear_behavior_vars),
+    names_sep = "_"
+  )
+
+print(linear_residual_df_summary_wide)
+
+# Start extracting
+linear_residual_list <- purrr::map(
+  linear_behavior_vars,
+  ~ extract_linear_residuals(
+    data = linear_residual_df_summary_wide,
+    var = .x,
+    task1 = task1_label,
+    task2 = task2_label
+  )
+)
+
+linear_residuals <- reduce(linear_residual_list, full_join, by = id_col)
+
+# Now quadratic residuals
+quadratic_residuals_list <- purrr::map(
+  quadratic_behavior_vars,
+  ~ extract_mw_quadratic_residuals(
+    data = E1_behavioral_mw_2,
+    var = .x,
+    id_col = "Subnum"
+  )
+)
+
+# Combine all random-effect outputs by Subnum
+quadratic_residuals <- purrr::reduce(quadratic_residuals_list, dplyr::full_join, by = "Subnum")
+
+# Merge residuals
+residuals_all <- linear_residuals %>%
+  left_join(quadratic_residuals, by = "Subnum")
+write_csv(residuals_all, "./data/behavior_residuals.csv")
+
+# # ==============================================================================
 # PLS SEM
-igt_sgt_pls <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/PLS_Data/PLS_Sem_IGT_SGT.csv")
-igt_sgt_pls$Condition <- factor(igt_sgt_pls$Condition, levels = c('Nature', 'Urban'))
-igt_sgt_pls <- igt_sgt_pls %>%
+E1_pls <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/PLS_Data/PLS_Sem_E1.csv")
+model <- glm(Switch_resid ~ (sky+grass+plant+water+fence+path+river+bench+
+                                         pole+building+tree+earth+rock+streetlight+wall+
+                                         signboard+sidewalk+railing+road+person+mountain)*Condition, data=E1_pls)
+summary(model)
+plot(allEffects(model))
+
+# Example for one variable (you would repeat for all or use a loop/dplyr)
+E1_pls <- E1_pls %>%
+  group_by(Condition) %>%
+  mutate(grass_mean = mean(grass),
+         grass_dev = grass - mean(grass))
+
+# New Model
+model_decomp <- glm(Switch_resid ~ Condition + grass_mean + grass_dev, data = E1_pls)
+summary(model_decomp)
+plot(allEffects(model_decomp))
+
+E1_pls$Condition <- factor(E1_pls$Condition, levels = c('Nature', 'Urban'))
+E1_pls <- E1_pls %>%
   mutate(Cond01 = ifelse(Condition == "Nature", 1, 0))
-igt_sgt_pls_nat <- igt_sgt_pls %>%
+E1_pls_nat <- E1_pls %>%
   filter(Condition == 'Nature')
-igt_sgt_pls_urb <- igt_sgt_pls %>%
+E1_pls_urb <- E1_pls %>%
   filter(Condition == 'Urban')
 
 mm <- constructs(
-  composite("Visual", c('Hue', 'Bright', 'Saturaton', 'SDhue', 'SDsat', 'Sdbright',
-                        'Entropy', 'SED', 'NSED')),
-  # composite("Rating", c("naturalness", "disorderliness", "aesthetic")),
+  # composite("Visual", c('Hue', 'Bright', 'Saturaton', 'SDhue', 'SDsat', 'Sdbright',
+  #                       'Entropy', 'SED', 'NSED')),
+  composite("Rating", c('naturalness', 'disorderliness',
+                        'aesthetic', 'familiarity', 'engagement', 'fascination', 'mystery',
+                        'imagability', 'control')),
   
-  composite("Behavior", c('BestOption_Optim_z_Diff')),
+  composite("Visual", c('sky', 'grass', 'plant', 'water', 'fence', 'path', 'river', 'bench', 'pole', 'building',
+                        'tree', 'earth', 'rock', 'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road',
+                        'person', 'mountain')),
+
+  composite("Behavior", c('BestChoice_resid', 'Reward_resid',
+                          'Switch_resid', 'WinStay_resid', 'LoseShift_resid')),
   # composite('Behavior', single_item('BestOption_SGT')),
   # composite('Behavior', c('BestOption_SGT', 'HighMagOption_SGT')),
   composite("Cond", single_item("Cond01"))
@@ -291,8 +423,8 @@ mm <- constructs(
 
 sm <- relationships(
   paths(from = "Cond",  to = "Visual"),
-  paths(from = "Visual",  to = c("Behavior"))
-  # paths(from = "Rating",  to = "Behavior")
+  paths(from = "Visual",  to = c("Rating", "Behavior")),
+  paths(from = "Rating",  to = "Behavior")
 )
 
 # sm <- relationships(
@@ -303,11 +435,11 @@ sm <- relationships(
 # )
 
 
-model <- estimate_pls(igt_sgt_pls, measurement_model = mm, structural_model = sm)
+model <- estimate_pls(E1_pls, measurement_model = mm, structural_model = sm)
 summary(model)
 
 boot_mobi_pls <- bootstrap_model(seminr_model = model,
-                                 nboot = 10000,
+                                 nboot = 1000,
                                  cores = 32)
 summary(boot_mobi_pls)
 plot(boot_mobi_pls, title = "Bootstrapped Model")
@@ -318,3 +450,24 @@ scores <- as.data.frame(model$construct_scores)
 lm1 <- lm(Behavior ~ Visual + Cond, data = scores)
 summary(lm1)
 plot(allEffects(lm1))
+
+# # ==============================================================================
+# # Change-point analysis
+# # ==============================================================================
+# # Function to detect change-point for each participant:
+# detect_change <- function(data_sub){
+#   # You can adjust method and penalty as needed
+#   cpt <- cpt.meanvar(data_sub$alpha, method = "PELT", penalty = "BIC")
+#   return(cpts(cpt)[1]) # First detected change-point
+# }
+# 
+# # Run change-point detection per participant (only Task 2)
+# change_points <- delta %>%
+#   # filter(task_id == 2) %>%
+#   group_by(Subnum, Condition) %>%
+#   summarise(change_point_trial = detect_change(cur_data()),
+#             .groups = "drop")
+# 
+# change_points
+# 
+# cpt <- cpts(cpt.meanvar(delta$alpha, method = "PELT", penalty = "BIC"))

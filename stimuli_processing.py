@@ -262,9 +262,25 @@ cols.insert(0, cols.pop(cols.index('ImageName'))) # make the ImageName the first
 features_df = features_df[cols]
 features_df.fillna(0, inplace=True)  # fill NaN with 0
 
-# Remove features that are zeros in more than 95% of the images
-threshold = 0.95 * len(features_df)
-features_df = features_df.loc[:, (features_df == 0).sum(axis=0) < threshold]
+# Remove features that don't appear in at least 10% of images AND at least once in each category
+overall_threshold = 0.10 * len(features_df)
+nature_df = features_df[features_df['Category'] == 'Nature']
+urban_df = features_df[features_df['Category'] == 'Urban']
+
+# Get feature columns (exclude ImageName and Category)
+feature_cols = [col for col in features_df.columns if col not in ['ImageName', 'Category']]
+
+# Filter features that meet both conditions: 10% overall presence AND at least once in each category
+retained_features = []
+for col in feature_cols:
+    overall_present = (features_df[col] != 0).sum()
+    nature_present = (nature_df[col] != 0).sum()
+    urban_present = (urban_df[col] != 0).sum()
+    if overall_present >= overall_threshold and nature_present >= 1 and urban_present >= 1:
+        retained_features.append(col)
+
+# Keep only retained features plus ImageName and Category
+features_df = features_df[['ImageName', 'Category'] + retained_features]
 
 # Combine with visual features
 visual_features_df_all = pd.merge(visual_features_df, features_df, on='ImageName')

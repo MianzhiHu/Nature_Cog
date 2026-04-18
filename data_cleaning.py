@@ -42,9 +42,8 @@ visual_features = ['naturalness', 'disorderliness', 'aesthetic', 'familiarity', 
                    'EdgeCount', 'CornerMean', 'CornerSD', 'CornerCount', 'ContourMeanLength', 'ContourSDLength',
                    'ContourMeanArea', 'ContourSDArea', 'ContourCount', 'AsymmetryV', 'AsymmetryH', 'KPMeanSize',
                    'KPSDSize', 'KPMeanStrength', 'KPSDStrength', 'KPMeanAngle', 'KPSDAngle', 'KPCount', 'sky', 'grass',
-                   'plant', 'water', 'sea', 'fence', 'path', 'river', 'bench', 'pole', 'building', 'tree', 'earth',
-                   'rock', 'streetlight', 'ashcan', 'table', 'wall', 'chair', 'signboard', 'stairs', 'pot', 'sculpture',
-                   'sidewalk', 'railing', 'road', 'person', 'mountain', 'lake', 'floor', 'car', 'traffic light',
+                   'plant', 'water', 'fence', 'path', 'river', 'bench', 'pole', 'building', 'tree', 'earth', 'rock',
+                   'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road', 'person', 'mountain',
                    'Semantic_PC1', 'Semantic_PC2', 'Semantic_PC3']
 
 
@@ -116,6 +115,10 @@ print(f'Removed {len(E1_constant_raters)} participants who rated all images the 
 
 E1_avg_rating = E1_img_data.groupby(['Subnum'])[visual_features].mean().reset_index()
 E1_avg_rating.to_csv('./data/E1_avg_rating.csv')
+
+# Calculate non-zero proportion
+E1_freq_rating = E1_img_data.groupby(['Subnum'])[visual_features].apply(lambda x: (x != 0).sum() / len(x)).reset_index()
+E1_freq_rating.to_csv('./data/E1_freq_rating.csv')
 
 # Add stimuli information to the dm data
 E1_dm_data = E1_dm_data.merge(E1_avg_rating, on=['Subnum'], how='left')

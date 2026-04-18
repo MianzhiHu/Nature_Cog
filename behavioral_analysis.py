@@ -1,3 +1,5 @@
+from cmath import nan
+
 import numpy as np
 import pandas as pd
 import pingouin as pg
@@ -7,23 +9,39 @@ import seaborn as sns
 import functools
 from matplotlib import font_manager as fm
 import scipy.stats as stats
+from utils.ComputationalModeling import behavioral_moving_window
 
 # ======================================================================================================================
 # Load the data
 # ======================================================================================================================
 E1_dm_data = pd.read_csv('./data/E1_dm_data.csv')
+E1_dm_modeled = pd.read_csv('./data/dm_summary_modeled.csv')
+E1_exploration = pd.read_csv('./data/exploration_data.csv')
+
 E1_img_data = pd.read_csv('./data/E1_img_data.csv')
 E1_avg_rating = pd.read_csv('./data/E1_avg_rating.csv')
+E2_data = pd.read_csv('./data/E2_all_data.csv')
+E2_avg_rating = pd.read_csv('./data/E2_avg_rating.csv')
 stimuli_info = pd.read_csv('./stimuli/visual_features_with_naturalness.csv')
 
+E1_exploration['Trial'] = E1_exploration.groupby(['Subnum', 'Condition', 'Task']).cumcount() + 2
 E1_dm_data['Condition'] = pd.Categorical(E1_dm_data['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+E2_data['Condition'] = pd.Categorical(E2_data['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
 task_1st = E1_dm_data[E1_dm_data['Task'] == 1]
 task_2nd = E1_dm_data[E1_dm_data['Task'] == 2]
 print(f'The number of participants: {E1_dm_data.groupby('Condition', observed=False)['Subnum'].nunique().to_dict()}')
 img_count = E1_img_data['image_name'].value_counts().reset_index()
-# # extract those who saw MDS
-# MDS_140_participants = E1_img_data[E1_img_data['image_name'].str.contains('MDS')]['Subnum'].unique().tolist()
 
+font_path = 'utils/AbhayaLibre-ExtraBold.ttf'
+prop = fm.FontProperties(fname=font_path)
+palette = sns.color_palette('deep')
+nature_color = palette[2]
+urban_color = palette[3]
+control_color = palette[7]
+palette_custom = [nature_color, urban_color, control_color]
+# 
+
+# Demographic information
 E1_dm_data_sex = E1_dm_data.groupby('Subnum')['Age'].first().reset_index()
 E1_dm_data_sex['Age'] = pd.to_numeric(E1_dm_data_sex['Age'], errors='coerce')
 print(E1_dm_data_sex['Age'].std())
@@ -32,7 +50,7 @@ def z_score(x):
     return (x - x.mean()) / x.std()
 
 # ======================================================================================================================
-# Overall Summary
+# E1 Analysis
 # ======================================================================================================================
 E1_dm_summary = E1_dm_data.groupby(['Subnum', 'Condition', 'Task'], observed=False).agg({
     'BestChoice': 'mean',
@@ -47,6 +65,8 @@ E1_dm_summary = E1_dm_summary.merge(E1_avg_rating, on=['Subnum'], how='left')
 # ----------------------------------------------------------------------------------------------------------------------
 # From E1_dm_data, extract the switch rate and win-stay lose-shift rates
 dm_prev = E1_dm_data.copy()
+dm_prev = pd.merge(dm_prev, E1_exploration, on=['Subnum', 'Condition', 'Task', 'Trial'], how='left')
+dm_prev['exploration'] = dm_prev['exploration'].map({'exploitation': 0, 'exploration': 1})
 dm_prev['Average'] = (dm_prev.groupby(['Subnum', 'Condition', 'Task'])['Reward'].expanding().mean().reset_index(level=[0,1,2], drop=True))
 dm_prev['PrevChoice'] = dm_prev.groupby(['Subnum', 'Condition', 'Task'])['KeyResponse'].shift(1)
 dm_prev['PrevOutcome'] = dm_prev.groupby(['Subnum', 'Condition', 'Task'])['Reward'].shift(1)
@@ -56,15 +76,116 @@ dm_prev['Switch'] = np.where(dm_prev['KeyResponse'] != dm_prev['PrevChoice'], 1,
 dm_prev['WinStay'] = np.where((dm_prev['PrevOutcome'] > dm_prev['PrevAverage2']) & (dm_prev['KeyResponse'] == dm_prev['PrevChoice']), 1, 0)
 dm_prev['LoseShift'] = np.where((dm_prev['PrevOutcome'] <= dm_prev['PrevAverage2']) & (dm_prev['KeyResponse'] != dm_prev['PrevChoice']), 1, 0)
 dm_prev['WSLS'] = dm_prev['WinStay'] + dm_prev['LoseShift']
-dm_prev.to_csv('./data/dm_switch.csv', index=False)
+# dm_prev['grass_weighted'] = dm_prev['grass'] * 0.5487266429826448
+# dm_prev['river_weighted'] = dm_prev['river'] * 0.39241939536531545
+# dm_prev['water_weighted'] = dm_prev['water'] * 0.34653498068717214
+# dm_prev['sidewalk_weighted'] = dm_prev['sidewalk'] * 0.3452173757477936
+# dm_prev['bench_weighted'] = dm_prev['bench'] * 0.2907458612546477
+# dm_prev['Semantic_agg'] = dm_prev[['grass_weighted', 'river_weighted', 'water_weighted', 'sidewalk_weighted', 'bench_weighted']].sum(axis=1)
+# dm_prev = dm_prev[dm_prev['Condition'] != 'Control'].copy()
+# dm_prev['Semantic_agg'] = dm_prev['Semantic_agg'].transform(z_score)
+# dm_prev.to_csv('./data/dm_switch.csv', index=False)
 
-dm_switch_summary = (dm_prev.groupby(['Subnum', 'Condition', 'Task'], observed=True).agg({
+
+# dm_prev.loc[dm_prev['Semantic_agg'] > 1, 'agg_Condition'] = 'High Composite Score'
+# dm_prev.loc[dm_prev['Semantic_agg'] < -1, 'agg_Condition'] = 'Low Composite Score'
+# dm_prev.loc[(dm_prev['Semantic_agg'] <= 1) & (dm_prev['Semantic_agg'] >= -1), 'agg_Condition'] = 'Mid Composite Score'
+# dm_prev_only = dm_prev[dm_prev['agg_Condition'].notna()].copy()
+# dm_prev_only.to_csv('./data/agg_condition_value_counts.csv', index=False)
+
+# # Testing!
+# # Moving window switch rate analysis (30 trials)
+# results = {
+#     'BestChoice':[],
+#     'Reward': [],
+#     'Switch': [],
+#     'WinStay': [],
+#     'LoseShift': [],
+#     'WSLS': [],
+#     'exploration':[]
+# }
+#
+# for (subnum, condition, task), group in dm_prev.groupby(['Subnum', 'Condition', 'Task'], observed=True):
+#     for metric in results.keys():
+#         result_df = behavioral_moving_window(group, metric)
+#         result_df['Subnum'] = subnum
+#         result_df['Condition'] = condition
+#         result_df['Task'] = task
+#         results[metric].append(result_df)
+#
+# # Concatenate all results
+# mw_best_df = pd.concat(results['BestChoice'], ignore_index=True)
+# mw_reward_df = pd.concat(results['Reward'], ignore_index=True)
+# mw_switch_df = pd.concat(results['Switch'], ignore_index=True)
+# mw_ws_df = pd.concat(results['WinStay'], ignore_index=True)
+# mw_ls_df = pd.concat(results['LoseShift'], ignore_index=True)
+# mw_wsls_df = pd.concat(results['WSLS'], ignore_index=True)
+# mw_exploration_df = pd.concat(results['exploration'], ignore_index=True)
+#
+# # Combine all metrics into a single DataFrame
+# moving_window_df = mw_switch_df.copy()
+# moving_window_df['BestChoice'] = mw_best_df['BestChoice']
+# moving_window_df['Reward'] = mw_reward_df['Reward']
+# moving_window_df['WinStay'] = mw_ws_df['WinStay']
+# moving_window_df['LoseShift'] = mw_ls_df['LoseShift']
+# moving_window_df['WSLS'] = mw_wsls_df['WSLS']
+# moving_window_df['Exploration'] = mw_exploration_df['exploration']
+# moving_window_df.to_csv('./data/E1_behavioral_moving_window.csv', index=False)
+#
+# # Plot moving window switch rate trajectory
+# plt.figure(figsize=(12, 8))
+# for task in [1, 2]:
+#     plt.subplot(2, 1, task)
+#     task_data = moving_window_df[moving_window_df['Task'] == task]
+#     sns.lineplot(data=task_data, x='Trial', y='Switch', hue='Condition', errorbar=('se'),
+#                  ax=plt.gca())
+#     plt.xlabel('Trial (Window Start)')
+#     plt.ylabel('Switch Rate (30-trial window)')
+#     plt.title(f'Task {task}: Moving Window Switch Rate Trajectory')
+#     plt.legend(title='Condition')
+#     plt.grid(True, alpha=0.3)
+# plt.tight_layout()
+# sns.despine()
+# plt.savefig('./figures/moving_switch_rate_trajectory.png', dpi=600)
+# plt.show()
+
+
+
+dm_switch_summary = (dm_prev.groupby(['Subnum', 'Condition', 'agg_Condition', 'Task'], observed=True).agg({
+    'BestChoice': 'mean',
     'Switch': 'mean',
     'WinStay': 'mean',
     'LoseShift': 'mean',
     'WSLS': 'mean'
 }).reset_index())
-dm_switch_summary.to_csv('./data/dm_switch_summary.csv', index=False)
+value_counts_df = (dm_switch_summary.groupby('Condition')['agg_Condition'].value_counts() / 2).reset_index(name='count')
+print(value_counts_df)
+
+
+# # Plot the value counts
+# plt.figure(figsize=(10, 6))
+# sns.barplot(data=value_counts_df, x='Condition', y='count', hue='agg_Condition', palette=palette_custom[:2])
+# plt.title('Composite Score +/-1 SD per Condition', fontproperties=prop, fontsize=20)
+# plt.xlabel('')
+# plt.ylabel('Frequency', fontproperties=prop, fontsize=16)
+# ax = plt.gca()
+# for lbl in ax.get_xticklabels():
+#     lbl.set_fontproperties(prop)
+#     lbl.set_fontsize(14)
+# for lbl in ax.get_yticklabels():
+#     lbl.set_fontproperties(prop)
+#     lbl.set_fontsize(14)
+# legend = ax.get_legend()
+# if legend is not None:
+#     legend.set_title('Composite Score Category')
+#     plt.setp(legend.get_title(), fontproperties=prop, fontsize=16)
+#     plt.setp(legend.get_texts(), fontproperties=prop, fontsize=14)
+# sns.despine()
+# plt.tight_layout()
+# plt.savefig('./figures/agg_condition_value_counts.png', dpi=600)
+# plt.show()
+
+# dm_switch_summary.to_csv('./data/dm_switch_summary.csv', index=False)
 
 print(f'Switch Rate: {dm_switch_summary.groupby(['Condition', 'Task'])["Switch"].mean()}')
 print('=' * 50)
@@ -75,15 +196,21 @@ print('=' * 50)
 print(f'WSLS: {dm_switch_summary.groupby(['Condition', 'Task'])["WSLS"].mean()}')
 
 dm_switch_summary_wide = dm_switch_summary.pivot_table(index=['Subnum', 'Condition'], columns='Task',
-                                                      values=['Switch', 'WinStay', 'LoseShift', 'WSLS'], observed=True)
+                                                      values=['BestChoice', 'Switch', 'WinStay', 'LoseShift', 'WSLS'], observed=True)
 dm_switch_summary_wide.columns = ['_'.join(map(str, col)).strip()for col in dm_switch_summary_wide.columns.values]
 
 dm_switch_summary_wide = dm_switch_summary_wide.reset_index()
-for metric in ['Switch', 'WinStay', 'LoseShift', 'WSLS']:
+for metric in ['BestChoice', 'Switch', 'WinStay', 'LoseShift', 'WSLS']:
+    # z-score each task separately
+    dm_switch_summary_wide[f'{metric}_1_z'] = dm_switch_summary_wide[f'{metric}_1'].transform(z_score)
+    dm_switch_summary_wide[f'{metric}_2_z'] = dm_switch_summary_wide[f'{metric}_2'].transform(z_score)
+    # calculate difference of z-scores
     diff_col = f'{metric}_Diff'
-    dm_switch_summary_wide[diff_col] = dm_switch_summary_wide[f'{metric}_2'] - dm_switch_summary_wide[f'{metric}_1']
-    # remove the mean difference
+    dm_switch_summary_wide[diff_col] = dm_switch_summary_wide[f'{metric}_2_z'] - dm_switch_summary_wide[f'{metric}_1_z']
+    # z-score the difference
     dm_switch_summary_wide[f'{diff_col}_z'] = dm_switch_summary_wide[diff_col].transform(z_score)
+    
+
 
 # Statistically test
 wsls_results = []
@@ -93,16 +220,93 @@ for metric in ['Switch', 'WinStay', 'LoseShift', 'WSLS']:
 pairwise = pg.pairwise_tests(dv='Switch', between='Condition', within='Task', data=dm_switch_summary, subject='Subnum', padjust='fdr_bh')
 
 # Plot
-for metric in ['Switch', 'WinStay', 'LoseShift', 'WSLS']:
+plot_df = dm_switch_summary.copy()
+plot_df['Condition'] = pd.Categorical(plot_df['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+# plot_df['agg_Condition'] = pd.Categorical(plot_df['agg_Condition'], categories=['High Composite Score', 'Mid Composite Score', 'Low Composite Score'], ordered=True)
+plot_df['Task'] = plot_df['Task'].map({1: 'First', 2: 'Second'})
+plot_df['Task'] = pd.Categorical(plot_df['Task'], categories=['First', 'Second'], ordered=True)
+
+
+for metric in ['BestChoice', 'Switch', 'WinStay', 'LoseShift', 'WSLS']:
     plt.figure(figsize=(8, 6))
-    sns.barplot(data=dm_switch_summary, x='Condition', y=metric, hue='Task', errorbar='se')
-    plt.title(f'{metric} by Condition and Task')
-    plt.ylabel(metric)
-    plt.xlabel('Task')
+    sns.barplot(data=plot_df, x='Condition', y=metric, hue='Task', errorbar='se', palette=palette_custom)
+    plt.title(f'')
+    plt.xlabel('')
+    plt.ylabel('P(Switch)', fontproperties=prop, fontsize=20)
+    ax = plt.gca()
+    for lbl in ax.get_xticklabels():
+        lbl.set_fontproperties(prop)
+        lbl.set_fontsize(16)
+    for lbl in ax.get_yticklabels():
+        lbl.set_fontproperties(prop)
+        lbl.set_fontsize(16)
+    legend = ax.get_legend()
+    if legend is not None:
+        legend.set_loc('lower left')
+        legend.set_alpha(0.5)
+        plt.setp(legend.get_title(), fontproperties=prop, fontsize=18)
+        plt.setp(legend.get_texts(), fontproperties=prop, fontsize=16)
     sns.despine()
+    plt.tight_layout()
     plt.savefig(f'./figures/{metric}_by_Condition_and_Task.png', dpi=600)
     plt.show()
+    plt.clf()
 
+# Plot z-scored differences for Switch, WinStay, LoseShift, WSLS
+dm_switch_summary_wide['Condition'] = pd.Categorical(dm_switch_summary_wide['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+for metric in ['BestChoice', 'Switch', 'WinStay', 'LoseShift', 'WSLS']:
+    plt.figure(figsize=(8, 6))
+    sns.barplot(data=dm_switch_summary_wide, x='Condition', y=f'{metric}_Diff', hue='Condition', errorbar='se',
+                palette=palette_custom, legend=False, dodge=False)
+    plt.title(f'')
+    plt.xlabel('')
+    plt.ylabel(f'{metric} Change (z-score)', fontproperties=prop, fontsize=20)
+    ax = plt.gca()
+    for lbl in ax.get_xticklabels():
+        lbl.set_fontproperties(prop)
+        lbl.set_fontsize(16)
+    for lbl in ax.get_yticklabels():
+        lbl.set_fontproperties(prop)
+        lbl.set_fontsize(16)
+    legend = ax.get_legend()
+    if legend is not None:
+        legend.remove()
+    sns.despine()
+    plt.tight_layout()
+    plt.savefig(f'./figures/{metric}_Diff_z_by_Condition.png', dpi=600)
+    plt.show()
+    plt.close()
+
+agg_condition = dm_switch_summary[['Subnum', 'Condition', 'agg_Condition', 'Task']]
+E1_dm_modeled = pd.merge(E1_dm_modeled, agg_condition, on=['Subnum', 'Condition', 'Task'], how='left')
+E1_dm_modeled = E1_dm_modeled[~E1_dm_modeled['agg_Condition'].isna()].copy()
+E1_dm_modeled['agg_Condition'] = pd.Categorical(E1_dm_modeled['agg_Condition'], categories=['High Composite Score', 'Mid Composite Score', 'Low Composite Score'], ordered=True)
+E1_dm_modeled['Task'] = E1_dm_modeled['Task'].map({1: 'First', 2: 'Second'})
+
+plt.figure(figsize=(8, 6))
+sns.barplot(data=E1_dm_modeled, x='agg_Condition', y='Exploration_Rate', hue='Task', errorbar='se', palette=palette_custom)
+plt.title(f'')
+plt.xlabel('')
+plt.ylabel('Exploration Rate', fontproperties=prop, fontsize=20)
+ax = plt.gca()
+for lbl in ax.get_xticklabels():
+    lbl.set_fontproperties(prop)
+    lbl.set_fontsize(16)
+for lbl in ax.get_yticklabels():
+    lbl.set_fontproperties(prop)
+    lbl.set_fontsize(16)
+legend = ax.get_legend()
+if legend is not None:
+    legend.set_title('Task')
+    legend.set_loc('lower left')
+    legend.set_alpha(0.5)
+    plt.setp(legend.get_title(), fontproperties=prop, fontsize=18)
+    plt.setp(legend.get_texts(), fontproperties=prop, fontsize=16)
+sns.despine()
+plt.tight_layout()
+plt.savefig(f'./figures/exploration_by_aggCondition_and_Task.png', dpi=600)
+plt.show()
+plt.clf()
 
 # pivot to wide format
 all_metrics = ['BestChoice', 'BestChoice_z']
@@ -120,18 +324,62 @@ for metric in ['BestChoice', 'BestChoice_z']:
 
 E1_dm_summary_task_wide = pd.merge(E1_dm_summary_task_wide, dm_switch_summary_wide, on=['Subnum', 'Condition'], how='left')
 E1_dm_summary_task_wide.to_csv('./data/E1_dm_summary_task_wide.csv', index=False)
-E1_dm_summary = pd.merge(E1_dm_summary, dm_switch_summary, on=['Subnum', 'Condition', 'Task'], how='left')
+E1_dm_summary = pd.merge(E1_dm_summary, dm_switch_summary, on=['Subnum', 'Condition', 'Task', 'BestChoice'], how='left')
 E1_dm_summary.to_csv('./data/E1_dm_summary.csv', index=False)
 
 # merge these two wide dataframes into E1_dm_data
-E1_dm_data_sum = functools.reduce(lambda left, right: pd.merge(left, right, on=['Subnum', 'Condition', 'Order'], how='left'),
+E1_dm_data_sum = functools.reduce(lambda left, right: pd.merge(left, right, on=['Subnum', 'Condition'], how='left'),
                             [E1_dm_data, E1_dm_summary_task_wide])
 E1_dm_data_sum.to_csv('./data/E1_dm_data_summary.csv', index=False)
 
 # ======================================================================================================================
+# E2 Analysis
+# ======================================================================================================================
+E2_dm_summary = E2_data.groupby(['Subnum', 'Condition'], observed=False).agg({
+    'BestChoice': 'mean',
+    'Reward': 'mean'
+}).dropna().reset_index()
+E2_dm_summary['BestChoice_z'] = E2_dm_summary['BestChoice'].transform(z_score)
+E2_dm_summary['Condition'] = pd.Categorical(E2_dm_summary['Condition'], categories=['Nature', 'Urban', 'Control'], ordered=True)
+E2_dm_summary = E2_dm_summary.merge(E2_avg_rating, on=['Subnum'], how='left')
+
+# ----------------------------------------------------------------------------------------------------------------------
+# WSLS analysis
+# ----------------------------------------------------------------------------------------------------------------------
+# From E2_dm_data, extract the switch rate and win-stay lose-shift rates
+dm_prev = E2_data.copy()
+dm_prev['Average'] = (dm_prev.groupby(['Subnum', 'Condition'])['Reward'].expanding().mean().reset_index(level=[0,1,2], drop=True))
+dm_prev['PrevChoice'] = dm_prev.groupby(['Subnum', 'Condition'])['KeyResponse'].shift(1)
+dm_prev['PrevOutcome'] = dm_prev.groupby(['Subnum', 'Condition'])['Reward'].shift(1)
+dm_prev['PrevOutcome2'] = dm_prev.groupby(['Subnum', 'Condition'])['Reward'].shift(2)
+dm_prev['PrevAverage2'] = dm_prev.groupby(['Subnum', 'Condition'])['Average'].shift(2)
+dm_prev['Switch'] = np.where(dm_prev['KeyResponse'] != dm_prev['PrevChoice'], 1, 0)
+dm_prev['WinStay'] = np.where((dm_prev['PrevOutcome'] > dm_prev['PrevAverage2']) & (dm_prev['KeyResponse'] == dm_prev['PrevChoice']), 1, 0)
+dm_prev['LoseShift'] = np.where((dm_prev['PrevOutcome'] <= dm_prev['PrevAverage2']) & (dm_prev['KeyResponse'] != dm_prev['PrevChoice']), 1, 0)
+dm_prev['WSLS'] = dm_prev['WinStay'] + dm_prev['LoseShift']
+dm_prev.to_csv('./data/E2_dm_switch.csv', index=False)
+
+dm_switch_summary = (dm_prev.groupby(['Subnum', 'Condition'], observed=True).agg({
+    'Switch': 'mean',
+    'WinStay': 'mean',
+    'LoseShift': 'mean',
+    'WSLS': 'mean'
+}).reset_index())
+dm_switch_summary.to_csv('./data/dm_switch_summary.csv', index=False)
+
+print(f'Switch Rate: {dm_switch_summary.groupby('Condition')["Switch"].mean()}')
+print('=' * 50)
+print(f'Win-Stay: {dm_switch_summary.groupby('Condition')['WinStay'].mean()}')
+print('=' * 50)
+print(f'Lose-Shift: {dm_switch_summary.groupby('Condition')["LoseShift"].mean()}')
+print('=' * 50)
+print(f'WSLS: {dm_switch_summary.groupby('Condition')["WSLS"].mean()}')
+
+
+# ======================================================================================================================
 # IGT-SGT Analysis
 # ======================================================================================================================
-# IGT_SGT_summary = E1_dm_summary[E1_dm_summary['Order'] == 'IGT_SGT'].copy()
+# IGT_SGT_summary = E2_dm_summary[E1_dm_summary['Order'] == 'IGT_SGT'].copy()
 # IGT_SGT_summary = IGT_SGT_summary[IGT_SGT_summary['Task'] == 'SGT']
 # IGT_SGT_summary_baseline = E1_dm_summary[(E1_dm_summary['Order'] == 'SGT_IGT') & (E1_dm_summary['Task'] == 'SGT')].copy()
 # IGT_SGT_summary_baseline['Condition'] = 'Baseline'
@@ -186,7 +434,7 @@ plt.show()
 # difference
 palette = sns.color_palette('deep')
 nature_color = palette[2]
-urban_color = palette[3]
+urban_color = palette[5]
 control_color = palette[7]
 palette_custom = [nature_color, urban_color, control_color]
 

@@ -10,10 +10,13 @@ import seaborn as sns
 # Load image data
 img_data = pd.read_csv('./stimuli/visual_features_extracted.csv')
 print(img_data.columns)
-semantic_cols = ['Category', 'ImageName', 'sky', 'grass', 'plant', 'water', 'sea', 'fence', 'path', 'river', 'bench',
-                 'pole', 'building', 'tree', 'earth', 'rock', 'streetlight', 'ashcan', 'table', 'wall', 'chair',
-                 'signboard', 'stairs', 'pot', 'sculpture', 'sidewalk', 'railing', 'road', 'person', 'mountain',
-                 'lake', 'floor', 'car', 'traffic light']
+# semantic_cols = ['Category', 'ImageName', 'sky', 'grass', 'plant', 'water', 'sea', 'fence', 'path', 'river', 'bench',
+#                  'pole', 'building', 'tree', 'earth', 'rock', 'streetlight', 'ashcan', 'table', 'wall', 'chair',
+#                  'signboard', 'stairs', 'pot', 'sculpture', 'sidewalk', 'railing', 'road', 'person', 'mountain',
+#                  'lake', 'floor', 'car', 'traffic light']
+semantic_cols = ['Category', 'ImageName', 'sky', 'grass', 'plant', 'water', 'fence', 'path', 'river', 'bench', 'pole', 'building',
+                            'tree', 'earth', 'rock', 'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road',
+                            'person', 'mountain']
 semantic_data = img_data[semantic_cols].copy()
 
 # run tests to see how many components to keep
