@@ -8,26 +8,6 @@ import json
 from utils.Between_Subj_Preprocessing_Zip import process_participant_data, determine_condition
 
 
-def parse_d_hms(t):
-    """
-    Parse strings like '2:01:09:11' meaning D:HH:MM:SS.
-    If format is shorter (e.g. HH:MM:SS), it still works.
-    """
-    parts = t.split(":")
-    parts = list(map(int, parts))
-
-    if len(parts) == 4:
-        days, hours, minutes, seconds = parts
-    elif len(parts) == 3:
-        # HH:MM:SS
-        days = 0
-        hours, minutes, seconds = parts
-    else:
-        raise ValueError(f"Unrecognized duration format: {t}")
-
-    return pd.Timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
-
-
 # ======================================================================================================================
 # Load Daw Extended Q data
 # ======================================================================================================================
@@ -46,7 +26,8 @@ visual_features = ['naturalness', 'disorderliness', 'aesthetic', 'familiarity', 
                    'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road', 'person', 'mountain',
                    'Semantic_PC1', 'Semantic_PC2', 'Semantic_PC3']
 
-
+too_fast_threshold = 200
+too_fast_proportion = 100
 E1_all_participants_dfs = []
 E1_folder_directory = ['./data/Daw_Extended_Q']
 behavioral_list = ['Trial', 'React', 'Reward', 'KeyResponse', 'BestChoice', 'EV_A', 'EV_B', 'EV_C', 'EV_D']
@@ -55,6 +36,7 @@ i = 0
 # Iterate over each subfolder in the main folder
 for directory in E1_folder_directory:
     for participant_folder_name in os.listdir(directory):
+        print(f'Participant folder: {participant_folder_name}')
         # if the participant is not in the metadata, skip
         result_id = int(participant_folder_name.split('_')[2])
         print(f'Processing participant: {i + 1}')
@@ -65,7 +47,7 @@ for directory in E1_folder_directory:
         # Check if this path is indeed a folder
         if os.path.isdir(participant_folder_path):
             num_folders = sum(os.path.isdir(os.path.join(participant_folder_path, name)) for name in os.listdir(participant_folder_path))
-            if num_folders != 6:
+            if num_folders < 5:
                 print(f'Participant {participant_folder_name} has {num_folders} folders, expected 6. Skipping.')
                 continue
             # Process the participant folder and collect the DataFrame
@@ -108,34 +90,63 @@ E1_img_data = E1_img_data.merge(stimuli_info, on='image_name', how='left')
 # Find participants who rated all images the same
 rating_cols = ['naturalness', 'disorderliness', 'aesthetic', 'familiarity', 'engagement', 'fascination', 'mystery', 'imagability', 'control']
 n_unique = E1_img_data.groupby('Subnum')[rating_cols].nunique()
-E1_constant_raters = n_unique.index[(n_unique == 1).any(axis=1)].tolist()
+E1_constant_raters = n_unique.index[(n_unique == 1).all(axis=1)].tolist()
 
 E1_img_data = E1_img_data[~E1_img_data['Subnum'].isin(E1_constant_raters)]
 print(f'Removed {len(E1_constant_raters)} participants who rated all images the samely')
 
 E1_avg_rating = E1_img_data.groupby(['Subnum'])[visual_features].mean().reset_index()
-E1_avg_rating.to_csv('./data/E1_avg_rating.csv')
 
 # Calculate non-zero proportion
 E1_freq_rating = E1_img_data.groupby(['Subnum'])[visual_features].apply(lambda x: (x != 0).sum() / len(x)).reset_index()
-E1_freq_rating.to_csv('./data/E1_freq_rating.csv')
 
 # Add stimuli information to the dm data
 E1_dm_data = E1_dm_data.merge(E1_avg_rating, on=['Subnum'], how='left')
 
-# Detect inattentive participants
+# Detect inattentive participants who did not explore all 4 options
 E1_deck_counts = E1_dm_data.groupby(['Subnum', 'Task'])['KeyResponse'].nunique().reset_index()
 E1_deck_counts = E1_deck_counts[E1_deck_counts['KeyResponse'] < 4]
-
-# get all participants who should be removed by combining constant raters and deck counts
 E1_deck_counts = E1_deck_counts[['Subnum']].drop_duplicates()
-E1_deck_counts = pd.concat([E1_deck_counts, pd.DataFrame({'Subnum': E1_constant_raters})], ignore_index=True).drop_duplicates()
+print(f'Removed {E1_deck_counts["Subnum"].nunique()} participants who did not select each deck at least once')
 
-E1_all_data = E1_all_data[~E1_all_data['Subnum'].isin(E1_deck_counts['Subnum'])]
-E1_dm_data = E1_dm_data[~E1_dm_data['Subnum'].isin(E1_deck_counts['Subnum'])]
-E1_img_data = E1_img_data[~E1_img_data['Subnum'].isin(E1_deck_counts['Subnum'])]
-print(f'After removing {E1_deck_counts["Subnum"].nunique()} inattentive participants, the total number of participants is {E1_all_data["Subnum"].nunique()}')
+# Detect inattentive participants who made their choices too fast
+E1_rt = E1_dm_data.copy()
+E1_rt['too_fast'] = E1_rt['React'] < too_fast_threshold
+E1_rt_summary = E1_rt.groupby(['Subnum', 'Task']).agg(
+            n_valid_trials=('React', "size"),
+            n_too_fast=("too_fast", "sum"),
+            prop_too_fast=("too_fast", "mean")).reset_index()
+
+# Plot
+g = sns.displot(data=E1_rt_summary, x='prop_too_fast', col='Task', bins=np.linspace(0, 1, 21),
+                col_wrap=2, height=4, aspect=1.2)
+for ax in g.axes.flat:
+    ax.axvline(0.4, linestyle='--', color='red', label='40% cutoff')
+    ax.set_xlabel('Proportion of Choices Below 300 ms')
+    ax.set_ylabel('Number of Participants')
+g.fig.suptitle('Per-Task Distribution of Fast-Decision Proportion', y=1.03)
+plt.savefig('./figures/E1_rt.png', dpi=600)
+
+E1_rt_exclude = E1_rt_summary[E1_rt_summary['prop_too_fast'] >= too_fast_proportion]
+print(f'Removed {E1_rt_exclude["Subnum"].nunique()} participants who made their choices too fast')
+E1_rt_exclude = E1_rt_exclude['Subnum'].unique().tolist()
+
+# Remove bad participants
+E1_bad_participants = pd.concat([E1_deck_counts[['Subnum']], pd.DataFrame({'Subnum': E1_constant_raters}),
+                                 pd.DataFrame({'Subnum': E1_rt_exclude})], ignore_index=True).drop_duplicates()
+E1_bad_subnums = E1_bad_participants['Subnum'].unique()
+
+E1_all_data = E1_all_data[~E1_all_data['Subnum'].isin(E1_bad_subnums)].copy()
+E1_dm_data = E1_dm_data[~E1_dm_data['Subnum'].isin(E1_bad_subnums)].copy()
+E1_img_data = E1_img_data[~E1_img_data['Subnum'].isin(E1_bad_subnums)].copy()
+print(f'After removing {len(E1_bad_subnums)} bad participants, the total number of participants is {E1_all_data["Subnum"].nunique()}')
 print(f'Conditions: {E1_all_data["Condition"].value_counts() // 350}')
+
+# Save rating summaries after all participant exclusions
+E1_avg_rating = E1_img_data.groupby(['Subnum'])[visual_features].mean().reset_index()
+E1_freq_rating = E1_img_data.groupby(['Subnum'])[visual_features].apply(lambda x: (x != 0).sum() / len(x)).reset_index()
+E1_avg_rating.to_csv('./data/E1_avg_rating.csv', index=False)
+E1_freq_rating.to_csv('./data/E1_freq_rating.csv', index=False)
 
 # Save the data
 E1_all_data.to_csv('./data/E1_all_data.csv', index=False)
@@ -245,7 +256,6 @@ E2_all_data = E2_all_data.merge(E1_ratings, on='image_name', how='left')
 
 # Remove ratings from visual features
 E2_avg_rating = E2_all_data.groupby(['Subnum'])[visual_features].mean().reset_index()
-E2_avg_rating.to_csv('./data/E2_avg_rating.csv')
 
 # Add stimuli information to the dm data
 E2_all_data = E2_all_data.merge(E2_avg_rating, on=['Subnum'], how='left')
@@ -254,10 +264,39 @@ E2_all_data = E2_all_data.merge(E2_avg_rating, on=['Subnum'], how='left')
 E2_deck_counts = E2_all_data.groupby(['Subnum'])['KeyResponse'].nunique().reset_index()
 E2_deck_counts = E2_deck_counts[E2_deck_counts['KeyResponse'] < 4]
 E2_deck_counts = E2_deck_counts[['Subnum']].drop_duplicates()
+print(f'Removed {E2_deck_counts["Subnum"].nunique()} participants who did not select each deck at least once')
 
-E2_all_data = E2_all_data[~E2_all_data['Subnum'].isin(E2_deck_counts['Subnum'])]
-print(f'After removing {E2_deck_counts["Subnum"].nunique()} inattentive participants, the total number of participants is {E2_all_data["Subnum"].nunique()}')
+# Detect inattentive participants who made their choices too fast
+E2_rt = E2_all_data.copy()
+E2_rt['too_fast'] = E2_rt['React'] < too_fast_threshold
+E2_rt_summary = E2_rt.groupby(['Subnum']).agg(
+            n_valid_trials=('React', "size"),
+            n_too_fast=("too_fast", "sum"),
+            prop_too_fast=("too_fast", "mean")).reset_index()
+E2_rt_exclude = E2_rt_summary[E2_rt_summary['prop_too_fast'] >= too_fast_proportion]
+
+
+g = sns.displot(data=E2_rt_summary, x='prop_too_fast', bins=np.linspace(0, 1, 21), height=4, aspect=1.2)
+for ax in g.axes.flat:
+    ax.axvline(0.3, linestyle='--', color='red', label='40% cutoff')
+    ax.set_xlabel('Proportion of Choices Below 300 ms')
+    ax.set_ylabel('Number of Participants')
+plt.savefig('./figures/E2_rt.png', dpi=600)
+
+print(f'Removed {E2_rt_exclude["Subnum"].nunique()} participants who made their choices too fast')
+E2_rt_exclude = E2_rt_exclude['Subnum'].unique().tolist()
+
+# Remove bad participants
+E2_bad_participants = pd.concat([E2_deck_counts[['Subnum']], pd.DataFrame({'Subnum': E2_rt_exclude})],
+                                ignore_index=True).drop_duplicates()
+E2_bad_subnums = E2_bad_participants['Subnum'].unique()
+E2_all_data = E2_all_data[~E2_all_data['Subnum'].isin(E2_bad_subnums)].copy()
+print(f'After removing {len(E2_bad_subnums)} inattentive participants, the total number of participants is {E2_all_data["Subnum"].nunique()}')
 print(f'Conditions: {E2_all_data["Condition"].value_counts() // 250}')
+
+# Save rating summaries after all participant exclusions
+E2_avg_rating = E2_avg_rating[~E2_avg_rating['Subnum'].isin(E2_bad_subnums)].copy()
+E2_avg_rating.to_csv('./data/E2_avg_rating.csv', index=False)
 
 # Save the data
 E2_all_data.to_csv('./data/E2_all_data.csv', index=False)

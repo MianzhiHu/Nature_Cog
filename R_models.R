@@ -16,6 +16,8 @@ library(tidyr)
 library(purrr)
 library(tibble)
 library(readr)
+library(ordinal)
+library(ggeffects)
 
 # ==============================================================================
 # Read the data
@@ -27,7 +29,8 @@ dm_summary_modeled <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/d
 dm_composite <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/agg_condition_value_counts.csv")
 
 wsls_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_switch.csv")
-exploration <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/exploration_data.csv")
+E2_wsls_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E2_dm_switch.csv")
+exploration <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_exploration_data.csv")
 E1_behavioral_mw <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_behavioral_moving_window.csv")
 
 
@@ -43,6 +46,12 @@ dm_summary_modeled$Task <- factor(dm_summary_modeled$Task, levels = c(1, 2), lab
 wsls_data$Condition <- factor(wsls_data$Condition, levels = c('Control', 'Nature', 'Urban'))
 wsls_data$Task <- factor(wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
 wsls_data$exploration <- factor(wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
+wsls_data$EV_rank <- factor(wsls_data$EV_rank, levels = c('1st', '2nd', '3rd', '4th'))
+
+E2_wsls_data$Condition <- factor(E2_wsls_data$Condition, levels = c('Nature', 'Urban', 'Control'))
+E2_wsls_data$Task <- factor(E2_wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
+E2_wsls_data$exploration <- factor(E2_wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
+# E2_wsls_data$EV_rank <- factor(E2_wsls_data$EV_rank, levels = c('1st', '2nd', '3rd', '4th'))
 
 dm_composite$agg_Condition <- factor(dm_composite$agg_Condition, levels = c('Mid Composite Score', 'High Composite Score', 'Low Composite Score'))
 dm_composite$Task <- factor(dm_composite$Task, levels = c(1, 2), labels = c("First", "Second"))
@@ -60,7 +69,7 @@ dm_summary_modeled_wide <- dm_summary_modeled %>%
   pivot_wider(
     id_cols = c(Subnum, Condition),
     names_from = Task,
-    values_from = t,
+    values_from = Exploration,
     names_prefix = "Task_"
   )
 
@@ -177,6 +186,14 @@ plot(allEffects(model))
 # ==============================================================================
 # Win-Stay-Lose-Shift Behavior
 # ==============================================================================
+wsls_2 <- wsls_data %>%
+  filter(Task == 'Second')
+
+
+reward_model <- lmer(Reward ~ Condition * Task + (1|Subnum), data = wsls_data)
+summary(reward_model)
+plot(allEffects(reward_model))
+
 optimal_model <- glmer(BestChoice ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
 summary(optimal_model)
 plot(allEffects(optimal_model))
@@ -200,6 +217,22 @@ plot(allEffects(ls_model))
 ex_model <- glmer(exploration ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
 summary(ex_model)
 plot(allEffects(ex_model))
+
+ex_model <- glmer(exploration ~ Condition * poly(Trial, 2) + (1|Subnum), family=binomial, data = E2_wsls_data)
+summary(ex_model)
+plot(allEffects(ex_model))
+
+rank_model <- clmm(EV_rank ~ Condition * Task + (1 | Subnum), data = wsls_data, link = "logit")
+summary(rank_model)
+plot(ggpredict(rank_model, terms = c("Condition", "Task")))
+
+rank_model <- clmm(EV_rank ~ Condition + (1 | Subnum), data = E2_wsls_data, link = "logit")
+summary(rank_model)
+plot(ggpredict(rank_model, terms = c("Condition", "Task")))
+
+ev_model <- lmer(EV_history ~ Condition * Task + (1|Subnum), data = wsls_data)
+summary(ev_model)
+plot(allEffects(ev_model))
 
 # ==============================================================================
 # Behavioral Moving Window

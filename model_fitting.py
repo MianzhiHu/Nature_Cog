@@ -6,11 +6,12 @@ import seaborn as sns
 import pingouin as pg
 import ruptures as rpt
 from utils.ComputationalModeling import (ComputationalModels, dict_generator, moving_window_model_fitting,
-                                         parameter_extractor, vb_model_selection, behavioral_moving_window)
+                                         parameter_extractor, vb_model_selection, behavioral_moving_window, parse_numeric_history)
 from utils.DualProcess import DualProcessModel
 import functools
 import ast
 from matplotlib import font_manager as fm
+
 
 # ======================================================================================================================
 # Load the data
@@ -43,6 +44,7 @@ E2_dict = dict_generator(E2_data, 'IGT_SGT')
 delta = ComputationalModels('delta', task='IGT_SGT')
 decay = ComputationalModels('decay', task='IGT_SGT')
 delta_PVL = ComputationalModels('delta_PVL', task='IGT_SGT')
+delta_PVL_relative = ComputationalModels('delta_PVL_relative', task='IGT_SGT')
 decay_PVL = ComputationalModels('decay_PVL', task='IGT_SGT')
 decay_PVL_relative = ComputationalModels('decay_PVL_relative', task='IGT_SGT')
 delta_asymmetric = ComputationalModels('delta_asymmetric', task='IGT_SGT')
@@ -52,14 +54,14 @@ WSLS_avg = ComputationalModels('WSLS_avg', task='IGT_SGT')
 WSLS_delta = ComputationalModels('WSLS_delta', task='IGT_SGT')
 kalman_filter = ComputationalModels('kalman_filter', task='IGT_SGT')
 kalman_decay = ComputationalModels('kalman_decay', task='IGT_SGT')
-kalman_simple = ComputationalModels('kalman_simple', task='IGT_SGT')
 kalman_filter_bonus = ComputationalModels('kalman_filter_bonus', task='IGT_SGT')
 kalman_decay_bonus = ComputationalModels('kalman_decay_bonus', task='IGT_SGT')
 dual_process = DualProcessModel(task='IGT_SGT')
 
-model_list = [delta, decay, delta_PVL, decay_PVL, decay_PVL_relative, delta_asymmetric, decay_PVPE, decay_win,
-              WSLS_avg, WSLS_delta, dual_process]
-# model_list = [kalman_filter, kalman_decay, kalman_simple, kalman_filter_bonus, kalman_decay_bonus]
+model_list = [delta, decay, delta_PVL, delta_PVL_relative, decay_PVL, decay_PVL_relative, delta_asymmetric,
+              decay_PVPE, decay_win, WSLS_avg, WSLS_delta]
+# model_list = [decay_PVL, decay_PVL_relative, delta_asymmetric]
+# model_list = [kalman_filter, kalman_decay, kalman_filter_bonus, kalman_decay_bonus]
 # model_list = [kalman_decay]
 model_name_list = [name for name, obj in globals().items() if any(obj is m for m in model_list)]
 
@@ -71,37 +73,49 @@ if __name__== '__main__':
     # # Fit E1 data
     # # When fitting kalman filter models, use initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0]
     # for i, model in enumerate(model_list):
-    #     taskfirst_result = model.fit(E1_taskfirst_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                                  num_exp_restart=150, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
-    #     taskfirst_result.to_csv(f'./data/Model/{model_name_list[i]}_1st.csv', index=False)
+    #     taskfirst_path = f'./data/Model/{model_name_list[i]}_1st.csv'
+    #     if os.path.exists(taskfirst_path):
+    #         print(f'{taskfirst_path} already exists. Skipping.')
+    #     else:
+    #         taskfirst_result = model.fit(E1_taskfirst_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    #                                      num_exp_restart=150)
+    #         taskfirst_result.to_csv(taskfirst_path, index=False)
     #
-    #     tasksecond_result = model.fit(E1_tasksecond_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                                   num_exp_restart=150, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
-    #     tasksecond_result.to_csv(f'./data/Model/{model_name_list[i]}_2nd.csv', index=False)
-
-    # # Now fit E1 data with moving window
-    # for i , model in enumerate(model_list):
-    #     taskfirst_mv = moving_window_model_fitting(E1_taskfirst_data, model, task='IGT_SGT', window_size=window_size,
-    #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
-    #     taskfirst_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_1st.csv', index=False)
-    #     tasksecond_mv = moving_window_model_fitting(E1_tasksecond_data, model, task='IGT_SGT', window_size=window_size,
-    #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
-    #     tasksecond_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_2nd.csv', index=False)
-
+    #     tasksecond_path = f'./data/Model/{model_name_list[i]}_2nd.csv'
+    #     if os.path.exists(tasksecond_path):
+    #         print(f'{tasksecond_path} already exists. Skipping.')
+    #     else:
+    #         tasksecond_result = model.fit(E1_tasksecond_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    #                                       num_exp_restart=150)
+    #         tasksecond_result.to_csv(tasksecond_path, index=False)
+    #
+    # # # Now fit E1 data with moving window
+    # # for i , model in enumerate(model_list):
+    # #     taskfirst_mv = moving_window_model_fitting(E1_taskfirst_data, model, task='IGT_SGT', window_size=window_size,
+    # #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    # #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    # #     taskfirst_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_1st.csv', index=False)
+    # #     tasksecond_mv = moving_window_model_fitting(E1_tasksecond_data, model, task='IGT_SGT', window_size=window_size,
+    # #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    # #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    # #     tasksecond_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_2nd.csv', index=False)
+    #
     # # Fit E2 data
     # for i, model in enumerate(model_list):
-    #     E2_result = model.fit(E2_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                           num_exp_restart=250)
-    #     E2_result.to_csv(f'./data/Model/{model_name_list[i]}_E2.csv', index=False)
-
-    # # Now fit E2 data with moving window
-    # for i , model in enumerate(model_list):
-    #     E2_mv = moving_window_model_fitting(E2_data, model, task='IGT_SGT', window_size=window_size,
-    #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
-    #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
-    #     E2_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_E2.csv', index=False)
+    #     E2_path = f'./data/Model/{model_name_list[i]}_E2.csv'
+    #     if os.path.exists(E2_path):
+    #         print(f'{E2_path} already exists. Skipping.')
+    #     else:
+    #         E2_result = model.fit(E2_dict, num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    #                               num_exp_restart=250)
+    #         E2_result.to_csv(E2_path, index=False)
+    #
+    # # # Now fit E2 data with moving window
+    # # for i , model in enumerate(model_list):
+    # #     E2_mv = moving_window_model_fitting(E2_data, model, task='IGT_SGT', window_size=window_size,
+    # #                                          num_iterations=n_iterations, initial_mode='first_trial_no_alpha',
+    # #                                          num_exp_restart=999, num_training_trials=999, initial_EV=[50.0, 50.0, 50.0, 50.0], initial_var=[16.0, 16.0, 16.0, 16.0])
+    # #     E2_mv.to_csv(f'./data/Model/Sliding Window/{model_name_list[i]}_E2.csv', index=False)
 
     # ==================================================================================================================
     # Load the model fitting results
@@ -146,10 +160,10 @@ if __name__== '__main__':
         model_fitting_results[name]['Condition'] = model_fitting_results[name]['Subnum'].map(condition_map)
         # remove unnecessary columns
         if model_name == 'dual_process':
-            cols_to_keep = (['Subnum', 'AIC', 'BIC', 'gau_exploitation', 'dir_exploitation'] + param_map[model_name] +
+            cols_to_keep = (['Subnum', 'AIC', 'BIC', 'gau_exploitation', 'dir_exploitation', 'EV_history'] + param_map[model_name] +
                             ['Task', 'Model', 'Condition'])
         else:
-            cols_to_keep = ['Subnum', 'AIC', 'BIC', 'exploitation'] + param_map[model_name] + ['Task', 'Model', 'Condition']
+            cols_to_keep = ['Subnum', 'AIC', 'BIC', 'exploitation', 'EV_history'] + param_map[model_name] + ['Task', 'Model', 'Condition']
         model_fitting_results[name] = model_fitting_results[name][cols_to_keep]
         print(f'Task: {task_name}; Model: {model_name}; Mean BIC: {model_fitting_results[name]["BIC"].mean()}')
         globals()[name] = model_fitting_results[name]
@@ -164,18 +178,29 @@ if __name__== '__main__':
     # print(alpha_est)
 
     # Exploration all models
-    all_model_results['exploration'] = all_model_results['exploitation'].apply(ast.literal_eval)
-    df_exploded = all_model_results.explode('exploration')
+    all_model_results['EV_rank'] = all_model_results['exploitation'].apply(ast.literal_eval)
+    all_model_results['EV_rank'] = all_model_results['EV_rank'].apply(
+        lambda ranks: [int(str(rank)[0]) for rank in ranks])
+    all_model_results['exploration'] = all_model_results['EV_rank'].apply(
+        lambda ranks: ['exploitation' if rank == 1 else 'exploration' for rank in ranks])
+    all_model_results['EV_history'] = all_model_results['EV_history'].apply(parse_numeric_history)
+    df_exploded = all_model_results.explode(['exploration', 'EV_rank', 'EV_history'])
 
     # ------------------------------------------------------------------------------------------------------------------
     # E1
     # ------------------------------------------------------------------------------------------------------------------
     E1_df_exploded = df_exploded[df_exploded['Task'] != 'E2'].copy()
+    E1_df_exploded['EV_history'] = pd.to_numeric(E1_df_exploded['EV_history'])
+    E1_df_exploded['EV_rank'] = pd.to_numeric(E1_df_exploded['EV_rank'])
     E1_exploration_summary = (E1_df_exploded.groupby(['Subnum', 'Model', 'Condition', 'Task'])['exploration'].
                               value_counts().unstack(fill_value=0).reset_index())
     E1_exploration_summary['Exploration_Rate'] = E1_exploration_summary['exploration'] / 149
     E1_exploration_summary['Exploration_Rate_z'] = (E1_exploration_summary.groupby(['Model'])['Exploration_Rate'].
                                                     transform(lambda x: (x - x.mean()) / x.std()))
+    E1_EV_summary = E1_df_exploded.groupby(['Subnum', 'Model', 'Condition', 'Task']).agg(
+        EV_history=('EV_history', 'mean'),
+        EV_rank=('EV_rank', 'mean')
+    ).reset_index()
 
     # Calculate the difference in exploration rate by task
     E1_exploration_wide = E1_exploration_summary.pivot_table(
@@ -188,17 +213,17 @@ if __name__== '__main__':
     E1_exploration_wide['Exploration_Diff_z'] = E1_exploration_wide.groupby(['Model'])['Exploration_Diff'].transform(lambda x: (x - x.mean()) / x.std())
 
 
-    # plot the mean BIC for each model and task and condition
-    plt.figure(figsize=(12, 6))
-    sns.catplot(data=E1_exploration_summary, x='Condition', y='Exploration_Rate_z', hue='Task', col='Model', kind='bar', height=6, aspect=1, errorbar='ci')
-    plt.savefig('./figures/Mean_BIC_by_Model_Task_Condition.png', dpi=600)
-    plt.show()
-
-    # plot the mean BIC for each model and task and condition
-    plt.figure(figsize=(12, 6))
-    sns.catplot(data=E1_exploration_wide, x='Condition', y='Exploration_Diff', col='Model', kind='bar', height=6, aspect=1)
-    plt.savefig('./figures/Exploration_Diff_by_Model_Task_Condition.png', dpi=600)
-    plt.show()
+    # # plot the mean BIC for each model and task and condition
+    # plt.figure(figsize=(12, 6))
+    # sns.catplot(data=E1_exploration_summary, x='Condition', y='Exploration_Rate_z', hue='Task', col='Model', kind='bar', height=6, aspect=1, errorbar='ci')
+    # plt.savefig('./figures/Mean_BIC_by_Model_Task_Condition.png', dpi=600)
+    # plt.show()
+    #
+    # # plot the mean BIC for each model and task and condition
+    # plt.figure(figsize=(12, 6))
+    # sns.catplot(data=E1_exploration_wide, x='Condition', y='Exploration_Diff', col='Model', kind='bar', height=6, aspect=1)
+    # plt.savefig('./figures/Exploration_Diff_by_Model_Task_Condition.png', dpi=600)
+    # plt.show()
 
 
     selected_model = 'kalman_decay'
@@ -206,8 +231,11 @@ if __name__== '__main__':
         globals()[f'{selected_model}_1st'],
         globals()[f'{selected_model}_2nd']
     ], ignore_index=True)
+    selected_model_results = selected_model_results.drop(columns=['exploitation', 'EV_history'], errors='ignore')
     dm_summary_modeled = pd.concat([selected_model_results], ignore_index=True)
     dm_summary_modeled = pd.merge(dm_summary_modeled, E1_exploration_summary[E1_exploration_summary['Model'] == selected_model],
+                                  on=['Subnum', 'Condition', 'Task', 'Model'], how='left')
+    dm_summary_modeled = pd.merge(dm_summary_modeled, E1_EV_summary[E1_EV_summary['Model'] == selected_model],
                                   on=['Subnum', 'Condition', 'Task', 'Model'], how='left')
 
     # Plot
@@ -225,7 +253,7 @@ if __name__== '__main__':
     font_path = 'utils/AbhayaLibre-ExtraBold.ttf'
     prop = fm.FontProperties(fname=font_path)
     plt.figure(figsize=(8, 6))
-    sns.barplot(data= plot_df, x='Condition', y='Exploration_Rate_z', hue='Task', errorbar='se', palette=palette_custom)
+    sns.barplot(data= plot_df, x='Condition', y='Exploration_Rate_z', hue='Task', errorbar='ci', palette=palette_custom)
     plt.title(f'')
     plt.xlabel('')
     plt.ylabel('Exploration Rate (z-score)', fontproperties=prop, fontsize=20)
@@ -256,20 +284,62 @@ if __name__== '__main__':
     for param in param_map[selected_model]:
         dm_summary_modeled[f'{param}_z'] = dm_summary_modeled.groupby(['Task'])[param].transform(lambda x: (x - x.mean()) / x.std())
     dm_summary_modeled.to_csv('./data/dm_summary_modeled.csv', index=False)
-    exploration = df_exploded[df_exploded['Model'] == selected_model]
-    exploration['Task'] = exploration['Task'].map(task_mapping)
-    exploration.to_csv('./data/exploration_data.csv', index=False)
+
+    E1_exploration = df_exploded[df_exploded['Model'] == selected_model]
+    E1_exploration = E1_exploration[E1_exploration['level_0'] != 'kalman_decay_E2']
+    E1_exploration['Task'] = E1_exploration['Task'].map(task_mapping)
+    E1_exploration.to_csv('./data/E1_exploration_data.csv', index=False)
 
     # Now pivot the modeled summary to wide format
-    dm_summary_modeled_wide = dm_summary_modeled.pivot_table(index=['Subnum', 'Condition', 'Order'], columns=['Task'],
-                                                              values=['AIC', 'BIC', 't', 'alpha', 'shape', 'la', 't_z',
-                                                                      'alpha_z', 'shape_z', 'la_z']).reset_index()
+    dm_summary_modeled_wide = dm_summary_modeled.pivot_table(index=['Subnum', 'Condition'], columns=['Task'],
+                                                             values=['AIC', 'BIC', 't', 'dis_sd', 'noise_sd', 'decay',
+                                                                     'decay_center', 'Exploration_Rate', 't_z',
+                                                                     'dis_sd_z', 'noise_sd_z', 'decay_z',
+                                                                     'decay_center_z', 'Exploration_Rate_z',
+                                                                     'EV_history', 'EV_rank']).reset_index()
     dm_summary_modeled_wide.columns = ['_'.join(map(str, col)).strip() if col[1] else col[0] for col in dm_summary_modeled_wide.columns.values]
     for param in param_map[selected_model]:
-        dm_summary_modeled_wide[f'{param}_Diff'] = dm_summary_modeled_wide[f'{param}_SGT'] - dm_summary_modeled_wide[f'{param}_IGT']
+        dm_summary_modeled_wide[f'{param}_Diff'] = dm_summary_modeled_wide[f'{param}_2'] - dm_summary_modeled_wide[f'{param}_1']
         dm_summary_modeled_wide[f'{param}_Diff_z'] = dm_summary_modeled_wide[f'{param}_Diff'].transform(lambda x: (x - x.mean()) / x.std())
     dm_summary_modeled_wide.to_csv('./data/dm_summary_modeled_wide.csv', index=False)
 
+    # ------------------------------------------------------------------------------------------------------------------
+    # E2
+    # ------------------------------------------------------------------------------------------------------------------
+    E2_df_exploded = df_exploded[df_exploded['Task'] == 'E2'].copy()
+    E2_df_exploded['EV_history'] = pd.to_numeric(E2_df_exploded['EV_history'])
+    E2_df_exploded['EV_rank'] = pd.to_numeric(E2_df_exploded['EV_rank'])
+    E2_exploration_summary = (E2_df_exploded.groupby(['Subnum', 'Model', 'Condition', 'Task'])['exploration'].
+                              value_counts().unstack(fill_value=0).reset_index())
+    E2_exploration_summary['Exploration_Rate'] = E2_exploration_summary['exploration'] / 249
+    E2_exploration_summary['Exploration_Rate_z'] = (E2_exploration_summary.groupby(['Model'])['Exploration_Rate'].
+                                                    transform(lambda x: (x - x.mean()) / x.std()))
+    E2_EV_summary = E2_df_exploded.groupby(['Subnum', 'Model', 'Condition', 'Task']).agg(
+        EV_history=('EV_history', 'mean'),
+        EV_rank=('EV_rank', 'mean')
+    ).reset_index()
+
+    E2_selected_model_results = globals()[f'{selected_model}_E2'].drop(
+        columns=['exploitation', 'EV_history'], errors='ignore')
+    E2_dm_summary_modeled = pd.merge(
+        E2_selected_model_results,
+        E2_exploration_summary[E2_exploration_summary['Model'] == selected_model],
+        on=['Subnum', 'Condition', 'Task', 'Model'],
+        how='left')
+    E2_dm_summary_modeled = pd.merge(
+        E2_dm_summary_modeled,
+        E2_EV_summary[E2_EV_summary['Model'] == selected_model],
+        on=['Subnum', 'Condition', 'Task', 'Model'],
+        how='left')
+    for param in param_map[selected_model]:
+        E2_dm_summary_modeled[f'{param}_z'] = (
+            E2_dm_summary_modeled[param] - E2_dm_summary_modeled[param].mean()
+        ) / E2_dm_summary_modeled[param].std()
+    E2_dm_summary_modeled.to_csv('./data/E2_dm_summary_modeled.csv', index=False)
+
+    E2_exploration = df_exploded[(df_exploded['Model'] == selected_model) & (df_exploded['Task'] == 'E2')]
+    E2_exploration.to_csv('./data/E2_exploration_data.csv', index=False)
+    # #
     # # ------------------------------------------------------------------------------------------------------------------
     # # E2
     # # ------------------------------------------------------------------------------------------------------------------
@@ -282,7 +352,7 @@ if __name__== '__main__':
     #
     # # plot the mean BIC for each model and task and condition
     # plt.figure(figsize=(12, 6))
-    # sns.catplot(data=E2_exploration_summary, x='Condition', y='Exploration_Rate', col='Model', kind='bar', height=6, aspect=1, errorbar='ci')
+    # sns.catplot(data=E2_exploration_summary, x='Condition', y='Exploration_Rate_z', col='Model', kind='bar', height=6, aspect=1, errorbar='ci')
     # plt.savefig('./figures/E2_Exploration_by_Model_Condition.png', dpi=600)
     # plt.show()
 

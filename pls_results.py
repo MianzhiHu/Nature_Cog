@@ -27,10 +27,10 @@ def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05,
     col = LV - 1
 
     # read lv_vals file
-    lv_vals = sio.loadmat(lv_path)
+    lv_vals = sio.loadmat(lv_path, variable_names=['u1'])
 
     # read bootstrap ratio file
-    boot_ratio = sio.loadmat(boot_ratio_path)
+    boot_ratio = sio.loadmat(boot_ratio_path, variable_names=['bsrs1'])
 
     u1 = lv_vals['u1'][:, col]
     boot_ratio = boot_ratio['bsrs1'][:, col]
@@ -111,15 +111,18 @@ model_semantic_results['u1'] = -1 * model_semantic_results['u1']
 # print(ori_data.groupby('Condition')['Exploration_Rate_difference'].mean())
 #
 # # Plot
-model_param_names = ['Inverse Temperature', 'Reward Variance', 'Noise Variance', 'Decay Rate', 'Decay Center', 'Exploration Rate']
+model_param_names = ['Inverse Temperature', 'Reward Variance', 'Noise Variance', 'Decay Rate', 'Decay Center']
 model_semantic_fig = plot_predictor_results(model_semantic_results, only_sig=False, save_path='./figures/PLS_Model_Semantic_Significant_Results.png')
 model_ratings_fig = plot_predictor_results(model_ratings_results, only_sig=False, ylabel='Subjective Rating Loadings', save_path='./figures/PLS_Ratings_Semantic_Significant_Results.png')
 
 
 
-plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~semantic.mat', method=3, ylabel='Correlation with LV',
-                     conditions=['Nature', 'Urban'], LV_Vis=1, plot_option=1, BehavLabels=model_param_names,
-                     title=False, save_path='./figures/')
+try:
+    plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~semantic.mat', method=3, ylabel='Correlation with LV',
+                         conditions=['Nature', 'Urban'], LV_Vis=1, plot_option=1, BehavLabels=model_param_names,
+                         title=False, save_path='./figures/')
+except TypeError as e:
+    print(f'Skipped PLS_model~semantic.mat outcome plot because scipy could not read its result struct: {e}')
 
 plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~ratings.mat', method=3, ylabel='Correlation with LV',
                      conditions=['Nature', 'Urban'], LV_Vis=1, plot_option=2, BehavLabels=model_param_names,
