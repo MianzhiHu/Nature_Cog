@@ -77,6 +77,11 @@ model_semantic_results = get_pls_results('PLS_model~semantic_lv_vals.mat',
                                         'PLS_model~semantic.mat',
                                         semantic_visual_features, method='fdr_bh', p=.05)
 model_semantic_results['u1'] = -1 * model_semantic_results['u1']
+
+model_semantic_results = get_pls_results('PLS_model~semanticE2_lv_vals.mat',
+                                        'PLS_model~semanticE2.mat',
+                                        semantic_visual_features, method='fdr_bh', p=.05)
+model_semantic_results['u1'] = -1 * model_semantic_results['u1']
 #
 # behav_semantic_results = get_pls_results('PLS_behav~semantic_lv_vals.mat',
 #                                         'PLS_behav~semantic.mat',
@@ -86,9 +91,9 @@ model_semantic_results['u1'] = -1 * model_semantic_results['u1']
 #                                         'PLS_behav~semanticpc.mat',
 #                                         semantic_pc_features, method='fdr_bh', p=.05)
 #
-# ratings_semantic_results = get_pls_results('PLS_ratings~semantic_lv_vals.mat',
-#                                         'PLS_ratings~semantic.mat',
-#                                         semantic_visual_features, method='fdr_bh', p=.05)
+ratings_semantic_results = get_pls_results('PLS_ratings~semantic_lv_vals.mat',
+                                        'PLS_ratings~semantic.mat',
+                                        semantic_visual_features, method='fdr_bh', p=.05)
 #
 #
 # u1_df = model_semantic_results
@@ -111,19 +116,18 @@ model_semantic_results['u1'] = -1 * model_semantic_results['u1']
 # print(ori_data.groupby('Condition')['Exploration_Rate_difference'].mean())
 #
 # # Plot
-model_param_names = ['Inverse Temperature', 'Reward Variance', 'Noise Variance', 'Decay Rate', 'Decay Center']
+model_param_names = ['Reward', 'Optimal Choice', 'Best-Chosen Value', 'Switch', 'Win-Stay', 'Lose-Shift',
+                     'Inverse Temperature', 'Reward Variance', 'Noise Variance', 'Decay Rate', 'Decay Center',
+                     'Exploration', 'Second-Best Choice', 'EV Chosen']
 model_semantic_fig = plot_predictor_results(model_semantic_results, only_sig=False, save_path='./figures/PLS_Model_Semantic_Significant_Results.png')
-model_ratings_fig = plot_predictor_results(model_ratings_results, only_sig=False, ylabel='Subjective Rating Loadings', save_path='./figures/PLS_Ratings_Semantic_Significant_Results.png')
+
+# model_ratings_fig = plot_predictor_results(model_ratings_results, only_sig=False, ylabel='Subjective Rating Loadings', save_path='./figures/PLS_Ratings_Semantic_Significant_Results.png')
 
 
 
-try:
-    plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~semantic.mat', method=3, ylabel='Correlation with LV',
+plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~semanticE2.mat', method=3, ylabel='Correlation with LV',
                          conditions=['Nature', 'Urban'], LV_Vis=1, plot_option=1, BehavLabels=model_param_names,
                          title=False, save_path='./figures/')
-except TypeError as e:
-    print(f'Skipped PLS_model~semantic.mat outcome plot because scipy could not read its result struct: {e}')
-
-plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~ratings.mat', method=3, ylabel='Correlation with LV',
-                     conditions=['Nature', 'Urban'], LV_Vis=1, plot_option=2, BehavLabels=model_param_names,
-                     title=False, save_path='./figures/')
+# plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~ratings.mat', method=3, ylabel='Correlation with LV',
+#                      conditions=['Nature', 'Urban'], LV_Vis=1, plot_option=2, BehavLabels=model_param_names,
+#                      title=False, save_path='./figures/')

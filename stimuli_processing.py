@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 import cv2
 from matplotlib import pyplot as plt
+from matplotlib import font_manager as fm
 from skimage.feature import graycomatrix, graycoprops
+from scipy import stats
 from transformers import AutoTokenizer, AutoModelForSemanticSegmentation, AutoProcessor
 from PIL import Image
 import torch
@@ -24,7 +26,155 @@ for path in [nature_stimuli_path, non_nature_stimuli_path, edge_stimuli_path]:
 
 # load stimuli info
 stimuli_info = pd.read_csv('./stimuli/stimuli_info.csv')
-#
+
+# ======================================================================================================================
+# Correlate E1 image-wise naturalness ratings with original Perc_Nature
+# ======================================================================================================================
+perc_nature_col = 'Perc_Nature' if 'Perc_Nature' in stimuli_info.columns else 'Perc_Nat'
+
+E1_image_ratings = pd.read_csv('./data/E1_img_data.csv', usecols=['image_name', 'naturalness'])
+E1_image_ratings['ImageName'] = E1_image_ratings['image_name'].astype(str).str.replace(r'\.[^.]+$', '', regex=True)
+E1_image_ratings['naturalness'] = pd.to_numeric(E1_image_ratings['naturalness'], errors='coerce')
+
+E1_image_naturalness = (
+    E1_image_ratings
+    .dropna(subset=['ImageName', 'naturalness'])
+    .groupby('ImageName', as_index=False)
+    .agg(
+        E1_naturalness=('naturalness', 'mean'),
+        n_E1_ratings=('naturalness', 'count')
+    )
+)
+
+E1_naturalness_perc_nature = E1_image_naturalness.merge(
+    stimuli_info[['ImageName', perc_nature_col]],
+    on='ImageName',
+    how='inner'
+)
+E1_naturalness_perc_nature[perc_nature_col] = pd.to_numeric(
+    E1_naturalness_perc_nature[perc_nature_col],
+    errors='coerce'
+)
+E1_naturalness_perc_nature = E1_naturalness_perc_nature.dropna(
+    subset=['E1_naturalness', perc_nature_col]
+)
+low_perc_nature_threshold = stimuli_info[perc_nature_col].quantile(0.25)
+high_perc_nature_threshold = stimuli_info[perc_nature_col].quantile(0.75)
+E1_naturalness_perc_nature['Original_Group'] = np.select(
+    [
+        E1_naturalness_perc_nature[perc_nature_col] <= low_perc_nature_threshold,
+        E1_naturalness_perc_nature[perc_nature_col] >= high_perc_nature_threshold
+    ],
+    ['Urban-selected', 'Nature-selected'],
+    default='Middle'
+)
+
+if len(E1_naturalness_perc_nature) >= 2:
+    r, p = stats.pearsonr(
+        E1_naturalness_perc_nature['E1_naturalness'],
+        E1_naturalness_perc_nature[perc_nature_col]
+    )
+else:
+    r, p = np.nan, np.nan
+
+E1_naturalness_perc_nature_corr = pd.DataFrame({
+    'rating_variable': ['E1_naturalness'],
+    'stimuli_variable': [perc_nature_col],
+    'n_images': [len(E1_naturalness_perc_nature)],
+    'pearson_r': [r],
+    'p_value': [p]
+})
+
+E1_naturalness_perc_nature.to_csv('./stimuli/E1_image_naturalness_vs_perc_nature.csv', index=False)
+E1_naturalness_perc_nature_corr.to_csv('./stimuli/E1_naturalness_perc_nature_correlation.csv', index=False)
+
+print(
+    f"E1 image-wise naturalness vs {perc_nature_col}: "
+    f"r = {r:.3f}"
+)
+
+font_path = 'utils/AbhayaLibre-ExtraBold.ttf'
+plot_font = fm.FontProperties(fname=font_path) if os.path.exists(font_path) else None
+
+plt.rcParams.update({
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'axes.linewidth': 1.2,
+})
+
+fig, ax = plt.subplots(figsize=(4.6, 4.0), dpi=150)
+x = E1_naturalness_perc_nature['E1_naturalness']
+y = E1_naturalness_perc_nature[perc_nature_col]
+
+group_colors = {
+    'Urban-selected': '#C44E52',
+    'Nature-selected': '#55A868',
+    'Middle': '#7F7F7F'
+}
+
+for group_name, group_data in E1_naturalness_perc_nature.groupby('Original_Group'):
+    ax.scatter(
+        group_data['E1_naturalness'],
+        group_data[perc_nature_col],
+        s=60,
+        color=group_colors[group_name],
+        alpha=0.78,
+        edgecolor='white',
+        linewidth=0.7,
+        label=group_name,
+        zorder=2
+    )
+
+if len(E1_naturalness_perc_nature) >= 2:
+    slope, intercept, _, _, _ = stats.linregress(x, y)
+    x_line = np.linspace(x.min(), x.max(), 200)
+    ax.plot(
+        x_line,
+        intercept + slope * x_line,
+        color='#222222',
+        linewidth=2.5,
+        zorder=3
+    )
+
+ax.text(
+    0.97, 0.05,
+    rf"$r$ = {r:.2f}",
+    transform=ax.transAxes,
+    ha='right',
+    va='bottom',
+    fontsize=12,
+    fontproperties=plot_font,
+    bbox=dict(boxstyle='round,pad=0.30', facecolor='white', edgecolor='0.85', alpha=0.92)
+)
+
+ax.set_xlabel('E1 Naturalness Rating', fontsize=14, fontproperties=plot_font)
+ax.set_ylabel(f'Original Naturalness ({perc_nature_col})', fontsize=14, fontproperties=plot_font)
+
+for tick_label in ax.get_xticklabels() + ax.get_yticklabels():
+    tick_label.set_fontproperties(plot_font)
+    tick_label.set_fontsize(11)
+
+legend = ax.legend(
+    title='Original Quartile',
+    loc='upper left',
+    frameon=True,
+    facecolor='white',
+    edgecolor='0.85'
+)
+legend.get_title().set_fontproperties(plot_font)
+legend.get_title().set_fontsize(11)
+for text in legend.get_texts():
+    text.set_fontproperties(plot_font)
+    text.set_fontsize(10)
+
+ax.tick_params(axis='both', width=1.2, length=5)
+ax.grid(axis='both', color='0.90', linewidth=0.8, zorder=0)
+
+plt.tight_layout()
+os.makedirs('./figures', exist_ok=True)
+fig.savefig('./figures/E1_naturalness_vs_perc_nature.png', dpi=600, bbox_inches='tight')
+plt.close(fig)
+
 # # calculate the mean and standard deviation of the naturalness ratings
 # mean_naturalness = stimuli_info['Perc_Nat'].mean()
 # std_naturalness = stimuli_info['Perc_Nat'].std()

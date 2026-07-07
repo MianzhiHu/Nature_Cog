@@ -18,6 +18,7 @@ library(tibble)
 library(readr)
 library(ordinal)
 library(ggeffects)
+library(emmeans)
 
 # ==============================================================================
 # Read the data
@@ -33,6 +34,8 @@ E2_wsls_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E2_dm_s
 exploration <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_exploration_data.csv")
 E1_behavioral_mw <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_behavioral_moving_window.csv")
 
+E1_pls <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/PLS_Data/PLS_Sem_E1.csv")
+
 
 # Possible levels: ('Nature', 'Urban', 'Control') or ('Urban', 'Nature', 'Control')
 dm_data$Condition <- factor(dm_data$Condition, levels = c('Control', 'Nature', 'Urban')) 
@@ -43,15 +46,15 @@ dm_summary$Condition <- factor(dm_summary$Condition, levels = c('Nature', 'Urban
 dm_summary_modeled$Condition <- factor(dm_summary_modeled$Condition, levels = c('Control', 'Nature', 'Urban'))
 dm_summary_modeled$Task <- factor(dm_summary_modeled$Task, levels = c(1, 2), labels = c("First", "Second"))
 
-wsls_data$Condition <- factor(wsls_data$Condition, levels = c('Control', 'Nature', 'Urban'))
+wsls_data$Condition <- factor(wsls_data$Condition, levels = c('Nature', 'Urban', 'Control'))
 wsls_data$Task <- factor(wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
 wsls_data$exploration <- factor(wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
-wsls_data$EV_rank <- factor(wsls_data$EV_rank, levels = c('1st', '2nd', '3rd', '4th'))
+wsls_data$EV_rank <- factor(wsls_data$EV_rank, levels = c('1', '2', '3', '4'))
 
 E2_wsls_data$Condition <- factor(E2_wsls_data$Condition, levels = c('Nature', 'Urban', 'Control'))
 E2_wsls_data$Task <- factor(E2_wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
 E2_wsls_data$exploration <- factor(E2_wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
-# E2_wsls_data$EV_rank <- factor(E2_wsls_data$EV_rank, levels = c('1st', '2nd', '3rd', '4th'))
+E2_wsls_data$EV_rank <- factor(E2_wsls_data$EV_rank, levels = c('1', '2', '3', '4'))
 
 dm_composite$agg_Condition <- factor(dm_composite$agg_Condition, levels = c('Mid Composite Score', 'High Composite Score', 'Low Composite Score'))
 dm_composite$Task <- factor(dm_composite$Task, levels = c(1, 2), labels = c("First", "Second"))
@@ -153,42 +156,16 @@ summary(inf)
 plot(allEffects(inf))
 
 # ==============================================================================
-# Behavioral Analysis
-# ==============================================================================
-model <- glm(Reward ~ Exploration_Rate * Condition * Task, data = dm_summary_modeled)
-summary(model)
-
-model <- glmer(BestChoice ~ Condition * Task + Block + (1|Subnum), family='binomial', data = dm_data)
-summary(model)
-plot(allEffects(model))
-
-model <- lmer(Reward ~ Condition * Task + Block + (1|Subnum), data = dm_data)
-summary(model)
-plot(allEffects(model))
-
-model <- lmer(BestOption ~ Condition * Block + naturalness + disorderliness
-              + aesthetic + (1|Subnum), data = igt_summary)
-summary(model)
-
-model <- lmer(alpha ~ Condition + window_id + (1|Subnum), data = delta_igt)
-summary(model)
-
-model <- lmer(t ~ Condition * Task + (1|Subnum), data = dm_summary_modeled)
-summary(model)
-
-model <- glm(Task_Second ~ Condition * Task_First, data = dm_summary_modeled_wide)
-summary(model)
-
-model <- glmer(exploration ~ Condition * Task + (1|Subnum), family=binomial, data = exploration)
-summary(model)
-plot(allEffects(model))
-
-# ==============================================================================
 # Win-Stay-Lose-Shift Behavior
 # ==============================================================================
 wsls_2 <- wsls_data %>%
   filter(Task == 'Second')
+wsls_exploration <- wsls_data %>%
+  filter(exploration == 'exploration')
 
+
+# Possible levels: ('Nature', 'Urban', 'Control') or ('Urban', 'Nature', 'Control') or ('Control', 'Nature', 'Urban')
+wsls_data$Condition <- factor(wsls_data$Condition, levels = c('Control', 'Nature', 'Urban'))
 
 reward_model <- lmer(Reward ~ Condition * Task + (1|Subnum), data = wsls_data)
 summary(reward_model)
@@ -197,6 +174,10 @@ plot(allEffects(reward_model))
 optimal_model <- glmer(BestChoice ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
 summary(optimal_model)
 plot(allEffects(optimal_model))
+
+value_dis_model <- lmer(value_gap ~ Condition * Task + (1|Subnum), data = wsls_data)
+summary(value_dis_model)
+plot(allEffects(value_dis_model))
 
 switch_model <- glmer(Switch ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_data)
 summary(switch_model)
@@ -218,11 +199,27 @@ ex_model <- glmer(exploration ~ Condition * Task + (1|Subnum), family=binomial, 
 summary(ex_model)
 plot(allEffects(ex_model))
 
-ex_model <- glmer(exploration ~ Condition * poly(Trial, 2) + (1|Subnum), family=binomial, data = E2_wsls_data)
+ex_model <- glmer(LoseShift ~ Condition + (1|Subnum), family=binomial, data = E2_wsls_data)
 summary(ex_model)
 plot(allEffects(ex_model))
 
+ex2_model <- glmer(rank_2 ~ Condition * Task + (1|Subnum), family=binomial, data = wsls_exploration)
+summary(ex2_model)
+plot(allEffects(ex2_model))
+emm <- as.data.frame(confint(emmeans(ex2_model, ~ Condition * Task)))
+write.csv(emm, "rank_2_emmeans.csv", row.names = FALSE)
+
+ex2_model <- glmer(rank_2 ~ Condition + (1|Subnum), family=binomial, data = wsls_150_E2)
+summary(ex2_model)
+plot(allEffects(ex2_model))
+
+
+
 rank_model <- clmm(EV_rank ~ Condition * Task + (1 | Subnum), data = wsls_data, link = "logit")
+summary(rank_model)
+plot(ggpredict(rank_model, terms = c("Condition", "Task")))
+
+rank_model <- clmm(EV_rank ~ Condition * Task + (1 | Subnum), data = wsls_exploration, link = "logit")
 summary(rank_model)
 plot(ggpredict(rank_model, terms = c("Condition", "Task")))
 
@@ -234,273 +231,470 @@ ev_model <- lmer(EV_history ~ Condition * Task + (1|Subnum), data = wsls_data)
 summary(ev_model)
 plot(allEffects(ev_model))
 
-# ==============================================================================
-# Behavioral Moving Window
-# ==============================================================================
-E1_behavioral_mw_2 <- E1_behavioral_mw %>%
-  filter(Task=='Second')
-wsls_data_2 <- wsls_data %>%
-  filter(Task=='Second')
+ev_model <- lmer(EV_history ~ Condition * Task + (1|Subnum), data = wsls_exploration)
+summary(ev_model)
+plot(allEffects(ev_model))
+emm <- as.data.frame(confint(emmeans(ev_model, ~ Condition * Task)))
+write.csv(emm, "EV_history_emmeans.csv", row.names = FALSE)
 
-bmw_e1 <- lmer(Exploration ~ Condition * poly(WindowStart, 2) + (1 + poly(WindowStart, 2) | Subnum), data = E1_behavioral_mw_2)
-summary(bmw_e1)
-plot(allEffects(bmw_e1))
-
-bmw_e1 <- glmer(Switch ~ Condition * poly(Trial, 2) + (1|Subnum), family=binomial, data = wsls_data_2)
-summary(bmw_e1)
-plot(allEffects(bmw_e1))
+ex_model <- glm(EV_rank_difference ~ (sky+grass+plant+water+fence+path+river+bench+pole+building+
+                  tree+earth+rock+streetlight+wall+signboard+sidewalk+railing+road+person+mountain) + Condition, data = E1_pls)
+summary(ex_model)
+plot(allEffects(ex_model))
 
 # ==============================================================================
-# Extract E1 residuals
+# E2 Behavioral Analysis
 # ==============================================================================
-# ID columns
-id_col <- "Subnum"
-task_col <- "Task"
-task1_label <- 'First'
-task2_label <- 'Second'
-linear_behavior_vars <- c(
-  "BestChoice",
-  "Reward",
-  "Switch",
-  "WinStay",
-  "LoseShift",
-  "exploration",
-  "t",
-  "dis_sd",
-  "noise_sd",
-  "decay",
-  "decay_center"
-)
+E2_wsls_exploration <- E2_wsls_data %>%
+  filter(exploration == 'exploration')
 
-quadratic_behavior_vars <- c(
-  "BestChoice",
-  "Reward",
-  "Switch",
-  "WinStay",
-  "LoseShift",
-  "Exploration"
-)
-
-# Define functions to extract residuals
-extract_linear_residuals <- function(data, var, task1, task2) {
-  
-  col_task1 <- paste0(var, "_", task1)
-  col_task2 <- paste0(var, "_", task2)
-  
-  # Filter data
-  tmp <- data %>%
-    dplyr::select(all_of(id_col), all_of(col_task1), all_of(col_task2)) %>%
-    dplyr::filter(
-      !is.na(.data[[col_task1]]),
-      !is.na(.data[[col_task2]])
-    )
-  
-  # Fit Task2 ~ Task1
-  formula_txt <- paste(col_task2, "~", col_task1)
-  model <- lm(as.formula(formula_txt), data = tmp)
-  
-  # Add residual columns
-  tmp[[paste0(var, "_resid")]] <- resid(model)
-  
-  cat("\n=========================\n")
-  cat("Behavior index:", var, "\n")
-  print(summary(model))
-  
-  tmp %>%
-    dplyr::select(
-      all_of(id_col),
-      all_of(paste0(var, "_resid"))
-    )
-}
-
-extract_mw_quadratic_residuals <- function(data, var, id_col = "Subnum") {
-  
-  formula_txt <- paste0(var, " ~ poly(WindowStart, 2) + 
-                        (1 + poly(WindowStart, 2) | ", id_col,")")
-  
-  cat("\n=========================\n")
-  cat("Fitting variable:", var, "\n")
-  cat("Formula:", formula_txt, "\n")
-  
-  model <- lmer(as.formula(formula_txt), data = data)
-  print(summary(model))
-  
-  # Extract random effects
-  re_df <- ranef(model)[[id_col]] %>%
-    as.data.frame() %>%
-    rownames_to_column(var = id_col)
-  
-  # Rename columns to include variable name
-  names(re_df) <- c(
-    id_col,
-    paste0(var, "_2nd_Intercept"),
-    paste0(var, "_2nd_Linear"),
-    paste0(var, "_2nd_Quadratic")
-  )
-  
-  # Match ID type to original data
-  if (is.numeric(data[[id_col]])) {
-    re_df[[id_col]] <- as.numeric(re_df[[id_col]])
-  } else {
-    re_df[[id_col]] <- as.character(re_df[[id_col]])
-  }
-  
-  re_df
-}
-
-# Load data
-linear_residual_df <- wsls_data
-linear_residual_df <- linear_residual_df %>%
-  mutate(exploration = ifelse(exploration == "exploration", 1, 0))
-
-summary_fun <- \(x) mean(x, na.rm = TRUE)
-
-# Generate summary as grouped by task
-linear_residual_df_summary <- linear_residual_df %>%
-  group_by(.data[[id_col]], .data[[task_col]]) %>%
-  summarise(
-    across(all_of(linear_behavior_vars), summary_fun, .names = "{.col}"),
-    .groups = "drop"
-  )
-
-# Check result
-print(linear_residual_df_summary)
-
-linear_residual_df_summary_wide <- linear_residual_df_summary %>%
-  pivot_wider(
-    names_from = all_of(task_col),
-    values_from = all_of(linear_behavior_vars),
-    names_sep = "_"
-  )
-
-print(linear_residual_df_summary_wide)
-
-# Start extracting
-linear_residual_list <- purrr::map(
-  linear_behavior_vars,
-  ~ extract_linear_residuals(
-    data = linear_residual_df_summary_wide,
-    var = .x,
-    task1 = task1_label,
-    task2 = task2_label
-  )
-)
-
-linear_residuals <- reduce(linear_residual_list, full_join, by = id_col)
-
-# Now quadratic residuals
-quadratic_residuals_list <- purrr::map(
-  quadratic_behavior_vars,
-  ~ extract_mw_quadratic_residuals(
-    data = E1_behavioral_mw_2,
-    var = .x,
-    id_col = "Subnum"
-  )
-)
-
-# Combine all random-effect outputs by Subnum
-quadratic_residuals <- purrr::reduce(quadratic_residuals_list, dplyr::full_join, by = "Subnum")
-
-# Merge residuals
-residuals_all <- linear_residuals %>%
-  left_join(quadratic_residuals, by = "Subnum")
-write_csv(residuals_all, "./data/behavior_residuals.csv")
-
-# # ==============================================================================
-# PLS SEM
-E1_pls <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/PLS_Data/PLS_Sem_E1.csv")
-model <- glm(Switch_resid ~ (sky+grass+plant+water+fence+path+river+bench+
-                                         pole+building+tree+earth+rock+streetlight+wall+
-                                         signboard+sidewalk+railing+road+person+mountain)*Condition, data=E1_pls)
+model <- lmer(Reward ~ Condition + (1|Subnum), data = E2_wsls_data)
 summary(model)
 plot(allEffects(model))
 
-# Example for one variable (you would repeat for all or use a loop/dplyr)
-E1_pls <- E1_pls %>%
-  group_by(Condition) %>%
-  mutate(grass_mean = mean(grass),
-         grass_dev = grass - mean(grass))
-
-# New Model
-model_decomp <- glm(Switch_resid ~ Condition + grass_mean + grass_dev, data = E1_pls)
-summary(model_decomp)
-plot(allEffects(model_decomp))
-
-E1_pls$Condition <- factor(E1_pls$Condition, levels = c('Nature', 'Urban'))
-E1_pls <- E1_pls %>%
-  mutate(Cond01 = ifelse(Condition == "Nature", 1, 0))
-E1_pls_nat <- E1_pls %>%
-  filter(Condition == 'Nature')
-E1_pls_urb <- E1_pls %>%
-  filter(Condition == 'Urban')
-
-mm <- constructs(
-  # composite("Visual", c('Hue', 'Bright', 'Saturaton', 'SDhue', 'SDsat', 'Sdbright',
-  #                       'Entropy', 'SED', 'NSED')),
-  composite("Rating", c('naturalness', 'disorderliness',
-                        'aesthetic', 'familiarity', 'engagement', 'fascination', 'mystery',
-                        'imagability', 'control')),
-  
-  composite("Visual", c('sky', 'grass', 'plant', 'water', 'fence', 'path', 'river', 'bench', 'pole', 'building',
-                        'tree', 'earth', 'rock', 'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road',
-                        'person', 'mountain')),
-
-  composite("Behavior", c('BestChoice_resid', 'Reward_resid',
-                          'Switch_resid', 'WinStay_resid', 'LoseShift_resid')),
-  # composite('Behavior', single_item('BestOption_SGT')),
-  # composite('Behavior', c('BestOption_SGT', 'HighMagOption_SGT')),
-  composite("Cond", single_item("Cond01"))
-  # composite("Params", c("t_Diff_z","alpha_Diff_z","shape_Diff_z","la_Diff_z"))
-  # composite("Params", c("t_SGT","alpha_SGT","shape_SGT","la_SGT"))
-)
-
-sm <- relationships(
-  paths(from = "Cond",  to = "Visual"),
-  paths(from = "Visual",  to = c("Rating", "Behavior")),
-  paths(from = "Rating",  to = "Behavior")
-)
-
-# sm <- relationships(
-#   paths(from = "Cond",  to = "Visual"),
-#   paths(from = "Visual",  to = c("Behavior", "Params")),
-#   # paths(from = "Rating",  to = c("Params", "Behavior")),
-#   paths(from = "Params",  to = "Behavior")
-# )
-
-
-model <- estimate_pls(E1_pls, measurement_model = mm, structural_model = sm)
+model <- glmer(BestChoice ~ Condition + (1|Subnum), family='binomial', data = E2_wsls_data)
 summary(model)
+plot(allEffects(model))
 
-boot_mobi_pls <- bootstrap_model(seminr_model = model,
-                                 nboot = 1000,
-                                 cores = 32)
-summary(boot_mobi_pls)
-plot(boot_mobi_pls, title = "Bootstrapped Model")
+value_dis_model <- lmer(value_gap ~ Condition + (1|Subnum), data = E2_wsls_data)
+summary(value_dis_model)
+plot(allEffects(value_dis_model))
 
-# Extract construct scores
-scores <- as.data.frame(model$construct_scores)
+switch_model <- glmer(Switch ~ Condition + (1|Subnum), family=binomial, data = E2_wsls_data)
+summary(switch_model)
+plot(allEffects(switch_model))
 
-lm1 <- lm(Behavior ~ Visual + Cond, data = scores)
-summary(lm1)
-plot(allEffects(lm1))
+ws_model <- glmer(WinStay ~ Condition + (1|Subnum), family=binomial, data = E2_wsls_data)
+summary(ws_model)
+plot(allEffects(ws_model))
 
-# # ==============================================================================
-# # Change-point analysis
-# # ==============================================================================
-# # Function to detect change-point for each participant:
-# detect_change <- function(data_sub){
-#   # You can adjust method and penalty as needed
-#   cpt <- cpt.meanvar(data_sub$alpha, method = "PELT", penalty = "BIC")
-#   return(cpts(cpt)[1]) # First detected change-point
-# }
-# 
-# # Run change-point detection per participant (only Task 2)
-# change_points <- delta %>%
-#   # filter(task_id == 2) %>%
-#   group_by(Subnum, Condition) %>%
-#   summarise(change_point_trial = detect_change(cur_data()),
-#             .groups = "drop")
-# 
-# change_points
-# 
-# cpt <- cpts(cpt.meanvar(delta$alpha, method = "PELT", penalty = "BIC"))
+ls_model <- glmer(LoseShift ~ Condition + (1|Subnum), family=binomial, data = E2_wsls_data)
+summary(ls_model)
+plot(allEffects(ls_model))
+
+ex_model <- glmer(exploration ~ Condition + (1|Subnum), family=binomial, data = E2_wsls_data)
+summary(ex_model)
+plot(allEffects(ex_model))
+
+ex2_model <- glmer(rank_2 ~ Condition + (1|Subnum), family=binomial, data = E2_wsls_exploration)
+summary(ex2_model)
+plot(allEffects(ex2_model))
+emm <- as.data.frame(confint(emmeans(ex2_model, ~ Condition)))
+write.csv(emm, "E2_rank_2_emmeans.csv", row.names = FALSE)
+
+ev_model <- lmer(EV_history ~ Condition + (1|Subnum), data = E2_wsls_data)
+summary(ev_model)
+plot(allEffects(ev_model))
+
+ev_model <- lmer(EV_history ~ Condition + (1|Subnum), data = E2_wsls_exploration)
+summary(ev_model)
+plot(allEffects(ev_model))
+emm <- as.data.frame(confint(emmeans(ev_model, ~ Condition)))
+write.csv(emm, "E2_EV_history_emmeans.csv", row.names = FALSE)
+
+ex_model <- glmer(exploration ~ (sky+grass+plant+water+fence+path+river+bench+
+                                   pole+building+tree+earth+rock+streetlight+
+                                   wall+signboard+sidewalk+railing+road+person+
+                                   mountain) * Condition + (1|Subnum), family=binomial, data = E2_wsls_data)
+summary(ex_model)
+plot(allEffects(ex_model))
+
+
+# ==============================================================================
+# E1 Participant-Level Semantic Difference Analysis
+# ==============================================================================
+# The saved E1 PLS data has one row per participant and z-scored task-difference
+# outcomes. Because there is only one row per participant, a participant random
+# intercept is not estimable here; these are participant-level linear models.
+
+e1_semantic_features <- c(
+  "sky", "grass", "plant", "water", "fence", "path", "river", "bench",
+  "pole", "building", "tree", "earth", "rock", "streetlight", "wall",
+  "signboard", "sidewalk", "railing", "road", "person", "mountain"
+)
+
+e1_difference_outcomes <- c(
+  "Reward_difference",
+  "BestChoice_difference",
+  "value_gap_difference",
+  "Switch_difference",
+  "WinStay_difference",
+  "LoseShift_difference",
+  "t_difference",
+  "dis_sd_difference",
+  "noise_sd_difference",
+  "decay_difference",
+  "decay_center_difference",
+  "Exploration_Rate_difference",
+  "rank_2_exploration_rate_difference",
+  "EV_history_exploration_difference"
+)
+
+e1_semantic_output_dir <- "C:/Users/zuire/PycharmProjects/Nature_Cog/analysis_outputs"
+dir.create(e1_semantic_output_dir, showWarnings = FALSE, recursive = TRUE)
+
+E1_semantic_difference_data <- read.csv(
+  "C:/Users/zuire/PycharmProjects/Nature_Cog/data/PLS_Data/PLS_Sem_E1.csv"
+)
+E1_semantic_difference_data$Condition <- factor(
+  E1_semantic_difference_data$Condition,
+  levels = c("Nature", "Urban")
+)
+
+standardize_e1_vector <- function(x) {
+  x <- as.numeric(x)
+  if (all(is.na(x)) || is.na(sd(x, na.rm = TRUE)) || sd(x, na.rm = TRUE) == 0) {
+    return(rep(NA_real_, length(x)))
+  }
+  as.numeric(scale(x))
+}
+
+fit_e1_difference_model <- function(data, outcome, interaction = FALSE) {
+  rhs <- if (interaction) {
+    "feature_z * Condition"
+  } else {
+    "feature_z + Condition"
+  }
+  lm(as.formula(paste0(outcome, " ~ ", rhs)), data = data)
+}
+
+extract_e1_difference_coefficients <- function(model, outcome, feature_name,
+                                               model_type, n_obs, n_subjects) {
+  coef_table <- as.data.frame(coef(summary(model)))
+  coef_table$term <- rownames(coef_table)
+  rownames(coef_table) <- NULL
+
+  bind_cols(
+    tibble(
+      level = "participant_difference",
+      outcome = outcome,
+      feature = feature_name,
+      model_type = model_type,
+      model = "lm",
+      n_obs = n_obs,
+      n_subjects = n_subjects,
+      error = NA_character_
+    ),
+    as_tibble(coef_table)
+  )
+}
+
+run_e1_semantic_difference_grid <- function(data, outcomes, features) {
+  results <- list()
+  row_id <- 1
+
+  for (outcome in outcomes) {
+    base_data <- data %>%
+      filter(!is.na(.data[[outcome]]), !is.na(Condition), !is.na(Subnum))
+
+    for (feature_name in features) {
+      model_data <- base_data %>%
+        filter(!is.na(.data[[feature_name]])) %>%
+        mutate(
+          feature_z = standardize_e1_vector(.data[[feature_name]]),
+          Condition = droplevels(Condition)
+        ) %>%
+        filter(!is.na(feature_z))
+
+      if (nrow(model_data) == 0 || nlevels(model_data$Condition) < 2) {
+        next
+      }
+
+      n_obs <- nrow(model_data)
+      n_subjects <- dplyr::n_distinct(model_data$Subnum)
+
+      for (model_type in c("additive", "interaction")) {
+        model <- tryCatch(
+          fit_e1_difference_model(
+            model_data,
+            outcome,
+            interaction = model_type == "interaction"
+          ),
+          error = function(e) e
+        )
+
+        if (inherits(model, "error")) {
+          results[[row_id]] <- tibble(
+            level = "participant_difference",
+            outcome = outcome,
+            feature = feature_name,
+            model_type = model_type,
+            model = "lm",
+            n_obs = n_obs,
+            n_subjects = n_subjects,
+            error = model$message,
+            term = NA_character_
+          )
+        } else {
+          results[[row_id]] <- extract_e1_difference_coefficients(
+            model,
+            outcome,
+            feature_name,
+            model_type,
+            n_obs,
+            n_subjects
+          )
+        }
+
+        row_id <- row_id + 1
+      }
+    }
+  }
+
+  bind_rows(results)
+}
+
+E1_semantic_difference_results <- run_e1_semantic_difference_grid(
+  E1_semantic_difference_data,
+  e1_difference_outcomes,
+  e1_semantic_features
+)
+
+write.csv(
+  E1_semantic_difference_results,
+  file.path(e1_semantic_output_dir, "e1_semantic_difference_model_coefficients_R.csv"),
+  row.names = FALSE
+)
+
+cat("\nE1 semantic difference analysis complete.\n")
+cat("Saved coefficient table to e1_semantic_difference_model_coefficients_R.csv\n")
+
+
+# ==============================================================================
+# E2 Trial-Wise Semantic Feature Analysis
+# ==============================================================================
+# This section tests each semantic feature one at a time and saves the fixed-effect
+# coefficient table directly from summary(lmer/glmer).
+
+semantic_features <- c(
+  "sky", "grass", "plant", "water", "fence", "path", "river", "bench",
+  "pole", "building", "tree", "earth", "rock", "streetlight", "wall",
+  "signboard", "sidewalk", "railing", "road", "person", "mountain"
+)
+
+trial_outcomes <- tibble::tribble(
+  ~outcome,      ~family,     ~subset,
+  "Reward",     "gaussian",  "all",
+  "BestChoice", "binomial",  "all",
+  "value_gap",  "gaussian",  "all",
+  "Switch",     "binomial",  "all",
+  "WinStay",    "binomial",  "all",
+  "LoseShift",  "binomial",  "all",
+  "exploration","binomial",  "all",
+  "rank_2",     "binomial",  "exploration_only",
+  "EV_history", "gaussian",  "exploration_only"
+)
+
+parameter_outcomes <- tibble::tribble(
+  ~outcome,        ~family,    ~subset,
+  "t",             "gaussian", "participant_mean_semantics",
+  "dis_sd",        "gaussian", "participant_mean_semantics",
+  "noise_sd",      "gaussian", "participant_mean_semantics",
+  "decay",         "gaussian", "participant_mean_semantics",
+  "decay_center",  "gaussian", "participant_mean_semantics"
+)
+
+semantic_output_dir <- "C:/Users/zuire/PycharmProjects/Nature_Cog/data"
+dir.create(semantic_output_dir, showWarnings = FALSE, recursive = TRUE)
+
+E2_semantic_trial_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E2_dm_switch.csv")
+E2_semantic_param_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E2_dm_summary_modeled.csv")
+
+E2_semantic_trial_data$Condition <- factor(
+  E2_semantic_trial_data$Condition,
+  levels = c("Nature", "Urban", "Control")
+)
+E2_semantic_param_data$Condition <- factor(
+  E2_semantic_param_data$Condition,
+  levels = c("Nature", "Urban", "Control")
+)
+
+standardize_vector <- function(x) {
+  x <- as.numeric(x)
+  if (all(is.na(x)) || is.na(sd(x, na.rm = TRUE)) || sd(x, na.rm = TRUE) == 0) {
+    return(rep(NA_real_, length(x)))
+  }
+  as.numeric(scale(x))
+}
+
+make_trial_subset <- function(data, outcome, subset_name) {
+  model_data <- data
+  if (subset_name == "exploration_only") {
+    model_data <- model_data %>% filter(exploration == 1)
+  }
+  model_data %>%
+    filter(!is.na(.data[[outcome]]), !is.na(Condition), !is.na(Subnum))
+}
+
+make_parameter_data <- function(trial_data, parameter_data) {
+  semantic_means <- trial_data %>%
+    group_by(Subnum, Condition) %>%
+    summarise(across(all_of(semantic_features), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+
+  parameter_data %>%
+    left_join(semantic_means, by = c("Subnum", "Condition")) %>%
+    mutate(Condition = factor(Condition, levels = c("Nature", "Urban", "Control")))
+}
+
+fit_semantic_model <- function(data, outcome, family_name, interaction = FALSE, mixed = TRUE) {
+  rhs <- if (interaction) {
+    "feature_z * Condition"
+  } else {
+    "feature_z + Condition"
+  }
+
+  if (mixed) {
+    formula_text <- paste0(outcome, " ~ ", rhs, " + Trial + (1|Subnum)")
+    if (family_name == "binomial") {
+      glmer(
+        as.formula(formula_text),
+        data = data,
+        family = binomial
+      )
+    } else {
+      lmer(as.formula(formula_text), data = data)
+    }
+  } else {
+    formula_text <- paste0(outcome, " ~ ", rhs)
+    lm(as.formula(formula_text), data = data)
+  }
+}
+
+extract_model_coefficients <- function(model, level_name, outcome, family_name, subset_name,
+                                       feature_name, model_type, n_obs, n_subjects,
+                                       model_name) {
+  coef_table <- as.data.frame(coef(summary(model)))
+  coef_table$term <- rownames(coef_table)
+  rownames(coef_table) <- NULL
+
+  bind_cols(
+    tibble(
+      level = level_name,
+      outcome = outcome,
+      family = family_name,
+      subset = subset_name,
+      feature = feature_name,
+      model_type = model_type,
+      model = model_name,
+      n_obs = n_obs,
+      n_subjects = n_subjects,
+      error = NA_character_
+    ),
+    as_tibble(coef_table)
+  )
+}
+
+run_semantic_feature_grid <- function(data, outcomes, level_name, mixed = TRUE) {
+  results <- list()
+  row_id <- 1
+
+  for (outcome_i in seq_len(nrow(outcomes))) {
+    outcome <- outcomes$outcome[outcome_i]
+    family_name <- outcomes$family[outcome_i]
+    subset_name <- outcomes$subset[outcome_i]
+
+    base_data <- if (level_name == "trial") {
+      make_trial_subset(data, outcome, subset_name)
+    } else {
+      data %>% filter(!is.na(.data[[outcome]]), !is.na(Condition), !is.na(Subnum))
+    }
+
+    for (feature_name in semantic_features) {
+      model_data <- base_data %>%
+        filter(!is.na(.data[[feature_name]])) %>%
+        mutate(
+          feature_z = standardize_vector(.data[[feature_name]]),
+          Condition = droplevels(Condition)
+        ) %>%
+        filter(!is.na(feature_z))
+
+      if (nrow(model_data) == 0 || nlevels(model_data$Condition) < 2) {
+        next
+      }
+
+      n_obs <- nrow(model_data)
+      n_subjects <- dplyr::n_distinct(model_data$Subnum)
+      model_name <- ifelse(mixed, ifelse(family_name == "binomial", "glmer", "lmer"), "lm")
+
+      for (model_type in c("additive", "interaction")) {
+        model <- tryCatch(
+          fit_semantic_model(
+            model_data,
+            outcome,
+            family_name,
+            interaction = model_type == "interaction",
+            mixed = mixed
+          ),
+          error = function(e) e
+        )
+
+        if (inherits(model, "error")) {
+          results[[row_id]] <- tibble(
+            level = level_name,
+            outcome = outcome,
+            family = family_name,
+            subset = subset_name,
+            feature = feature_name,
+            model_type = model_type,
+            model = model_name,
+            n_obs = n_obs,
+            n_subjects = n_subjects,
+            error = model$message,
+            term = NA_character_
+          )
+        } else {
+          results[[row_id]] <- extract_model_coefficients(
+            model,
+            level_name,
+            outcome,
+            family_name,
+            subset_name,
+            feature_name,
+            model_type,
+            n_obs,
+            n_subjects,
+            model_name
+          )
+        }
+
+        row_id <- row_id + 1
+      }
+    }
+  }
+
+  bind_rows(results)
+}
+
+E2_semantic_parameter_data <- make_parameter_data(
+  E2_semantic_trial_data,
+  E2_semantic_param_data
+)
+
+trial_semantic_results <- run_semantic_feature_grid(
+  E2_semantic_trial_data,
+  trial_outcomes,
+  level_name = "trial",
+  mixed = TRUE
+)
+
+parameter_semantic_results <- run_semantic_feature_grid(
+  E2_semantic_parameter_data,
+  parameter_outcomes,
+  level_name = "participant_parameter",
+  mixed = FALSE
+)
+
+E2_semantic_model_results <- bind_rows(
+  trial_semantic_results,
+  parameter_semantic_results
+)
+
+write.csv(
+  E2_semantic_model_results,
+  file.path(semantic_output_dir, "e2_semantic_feature_model_coefficients_R.csv"),
+  row.names = FALSE
+)
+
+cat("\nE2 semantic feature analysis complete.\n")
+cat("Saved fixed-effect coefficient table to e2_semantic_feature_model_coefficients_R.csv\n")
+

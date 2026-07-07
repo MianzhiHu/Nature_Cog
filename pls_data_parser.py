@@ -15,7 +15,7 @@ from scipy.stats import pearsonr
 identity_cols = ['Subnum', 'Condition', 'Task']
 ratings = ['naturalness', 'disorderliness', 'aesthetic', 'familiarity', 'engagement', 'fascination', 'mystery',
            'imagability', 'control']
-behav_perf = ['BestChoice', 'Reward', 'Switch', 'WinStay', 'LoseShift']
+behav_perf = ['BestChoice', 'Reward', 'value_gap', 'Switch', 'WinStay', 'LoseShift']
 low_visual_features = ['Hue', 'SDHue', 'Bright', 'SDBright', 'Saturaton', 'SDSat', 'Contrast', 'Dissimilarity',
                        'Homogeneity', 'Energy', 'Correlation', 'MeanTexture', 'SDTexture', 'Entropy', 'EdgeCount',
                        'CornerMean', 'CornerSD', 'CornerCount', 'ContourMeanLength', 'ContourSDLength',
@@ -31,7 +31,9 @@ semantic_visual_features_freq = [f'{feature}_freq' for feature in semantic_visua
 # semantic_visual_features = semantic_visual_features + semantic_visual_features_freq
 semantic_pc_features = ['Semantic_PC1', 'Semantic_PC2', 'Semantic_PC3']
 visual_features = low_visual_features + semantic_visual_features + semantic_pc_features
-model_param = ['t', 'dis_sd', 'noise_sd', 'decay', 'decay_center', 'Exploration_Rate', 'EV_history', 'EV_rank']
+model_param = ['t', 'dis_sd', 'noise_sd', 'decay', 'decay_center', 'Exploration_Rate', 'rank_2_exploration_rate', 'EV_history_exploration']
+all_behav = ['Reward', 'BestChoice', 'value_gap', 'Switch', 'WinStay', 'LoseShift', 't', 'dis_sd', 'noise_sd',
+             'decay', 'decay_center', 'Exploration_Rate', 'rank_2_exploration_rate', 'EV_history_exploration']
 
 
 if __name__ == '__main__':
@@ -42,10 +44,8 @@ if __name__ == '__main__':
 
     # Load data
     E1_dm_summary = pd.read_csv('./data/E1_dm_summary.csv')
-    model_summary = pd.read_csv(('./data/dm_summary_modeled.csv'))
+    E1_model_summary = pd.read_csv(('./data/dm_summary_modeled.csv'))
     E1_freq_summary = pd.read_csv('./data/E1_freq_rating.csv')
-    E2_dm_summary = pd.read_csv('./data/E2_dm_summary.csv')
-    E2_model_summary = pd.read_csv('./data/E2_dm_summary_modeled.csv')
 
     # Change column names in E1_freq_summary to match semantic_visual_features
     E1_freq_summary.rename(columns={feature: f'{feature}_freq' for feature in semantic_visual_features
@@ -54,9 +54,9 @@ if __name__ == '__main__':
     E1_dm_summary = pd.merge(E1_dm_summary, E1_freq_summary, on='Subnum')
 
     E1_dm_summary = E1_dm_summary[identity_cols + behav_perf + visual_features + ratings]
-    model_summary = model_summary[identity_cols + model_param]
+    E1_model_summary = E1_model_summary[identity_cols + model_param]
 
-    summary_all = pd.merge(E1_dm_summary, model_summary, on=identity_cols)
+    summary_all = pd.merge(E1_dm_summary, E1_model_summary, on=identity_cols)
     for condition in summary_all['Condition'].unique():
         for task in summary_all['Task'].unique():
             subset = summary_all[(summary_all['Condition'] == condition) & (summary_all['Task'] == task)]
@@ -73,9 +73,10 @@ if __name__ == '__main__':
     condition_list_no_control = [cond for cond in condition_list if cond != 'Control']
     behav_perf_residual = [perf + '_' + method for perf in behav_perf]
     model_param_residual = [param + '_' + method for param in model_param]
+    all_behav_residual = [param + '_' + method for param in all_behav]
 
     # if behav_perf_residual is NaN, then drop the row
-    residual = residual.dropna(subset=behav_perf_residual)
+    residual = residual.dropna(subset=all_behav_residual)
     # residual = residual[residual['Condition'] != 'Control'].copy()
 
     # Z-score the data for all columns
@@ -103,6 +104,8 @@ if __name__ == '__main__':
         semantic_pc_features_df = subset[semantic_pc_features].copy()
         visual_features_df = subset[visual_features].copy()
         model_param_df = subset[model_param_residual].copy()
+        all_behav_df = subset[all_behav_residual].copy()
+
 
         # save to csv
         ratings_df.to_csv(f'./data/PLS_Data/PLS_Ratings_{cond}.csv', index=False)
@@ -111,19 +114,29 @@ if __name__ == '__main__':
         semantic_visual_features_df.to_csv(f'./data/PLS_Data/PLS_Semantic_{cond}.csv', index=False)
         semantic_pc_features_df.to_csv(f'./data/PLS_Data/PLS_SemanticPC_{cond}.csv', index=False)
         model_param_df.to_csv(f'./data/PLS_Data/PLS_ModelParams_{cond}.csv', index=False)
+        all_behav_df.to_csv(f'./data/PLS_Data/PLS_AllBehav_{cond}.csv', index=False)
 
 
-        # print the mean of each semantic column
-        print(f'{cond} - Model Parameter Mean:\n{model_param_df.mean()}\n')
-        print(f'{cond} - Semantic Visual Features Mean:\n{semantic_visual_features_df.mean()}\n')
-        grass = semantic_visual_features_df['grass']
-        exploration = model_param_df['Exploration_Rate_' + method]
+        # # print the mean of each semantic column
+        # print(f'{cond} - Model Parameter Mean:\n{model_param_df.mean()}\n')
+        # print(f'{cond} - Semantic Visual Features Mean:\n{semantic_visual_features_df.mean()}\n')
+        # grass = semantic_visual_features_df['grass']
+        # exploration = model_param_df['Exploration_Rate_' + method]
 
-        print (pearsonr(grass, exploration))
+        # print (pearsonr(grass, exploration))
 
     # ==================================================================================================================
     # E2 PLS data
     # ==================================================================================================================
+    E2_dm_summary = pd.read_csv('./data/E2_dm_summary.csv')
+    E2_model_summary = pd.read_csv('./data/E2_dm_summary_modeled.csv')
+    E2_freq_summary = pd.read_csv('./data/E2_freq_rating.csv')
+
+    E2_freq_summary.rename(columns={feature: f'{feature}_freq' for feature in semantic_visual_features
+                                    if not feature.endswith('_freq')}, inplace=True)
+    E2_freq_summary = E2_freq_summary[['Subnum'] + semantic_visual_features_freq]
+    E2_dm_summary = pd.merge(E2_dm_summary, E2_freq_summary, on='Subnum')
+
     E2_dm_summary = E2_dm_summary[identity_cols + behav_perf + visual_features + ratings]
     E2_model_summary = E2_model_summary[identity_cols + model_param]
     E2_summary_all = pd.merge(E2_dm_summary, E2_model_summary, on=identity_cols)
@@ -142,6 +155,7 @@ if __name__ == '__main__':
     E2_pls_sem[semantic_visual_features].to_csv('./data/PLS_Data/PLS_Semantic_E2_NatureUrban.csv', index=False)
     E2_pls_sem[semantic_pc_features].to_csv('./data/PLS_Data/PLS_SemanticPC_E2_NatureUrban.csv', index=False)
     E2_pls_sem[model_param].to_csv('./data/PLS_Data/PLS_ModelParams_E2_NatureUrban.csv', index=False)
+    E2_pls_sem[all_behav].to_csv('./data/PLS_Data/PLS_AllBehav_E2_NatureUrban.csv', index=False)
 
     for cond in E2_summary_all['Condition'].unique():
         subset = E2_summary_all[E2_summary_all['Condition'] == cond].copy()
@@ -151,6 +165,7 @@ if __name__ == '__main__':
         semantic_visual_features_df = subset[semantic_visual_features].copy()
         semantic_pc_features_df = subset[semantic_pc_features].copy()
         model_param_df = subset[model_param].copy()
+        all_behav_df = subset[all_behav].copy()
 
         ratings_df.to_csv(f'./data/PLS_Data/PLS_Ratings_E2_{cond}.csv', index=False)
         behav_perf_df.to_csv(f'./data/PLS_Data/PLS_BehavPerf_E2_{cond}.csv', index=False)
@@ -158,4 +173,5 @@ if __name__ == '__main__':
         semantic_visual_features_df.to_csv(f'./data/PLS_Data/PLS_Semantic_E2_{cond}.csv', index=False)
         semantic_pc_features_df.to_csv(f'./data/PLS_Data/PLS_SemanticPC_E2_{cond}.csv', index=False)
         model_param_df.to_csv(f'./data/PLS_Data/PLS_ModelParams_E2_{cond}.csv', index=False)
+        all_behav_df.to_csv(f'./data/PLS_Data/PLS_AllBehav_E2_{cond}.csv', index=False)
 
