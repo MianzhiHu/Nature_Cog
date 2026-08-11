@@ -20,10 +20,6 @@ low_visual_features = ['Hue', 'SDHue', 'Bright', 'SDBright', 'Saturaton', 'SDSat
                        'Homogeneity', 'Energy', 'Correlation', 'MeanTexture', 'SDTexture', 'Entropy', 'EdgeCount',
                        'CornerMean', 'CornerSD', 'CornerCount', 'ContourMeanLength', 'ContourSDLength',
                        'ContourMeanArea', 'ContourSDArea', 'ContourCount', 'AsymmetryV', 'AsymmetryH']
-# semantic_visual_features = ['sky', 'grass', 'plant', 'water', 'sea', 'fence', 'path', 'river', 'bench', 'pole',
-#                             'building', 'tree', 'earth', 'rock', 'streetlight', 'ashcan', 'table', 'wall', 'chair',
-#                             'signboard', 'stairs', 'pot', 'sculpture', 'sidewalk', 'railing', 'road', 'person',
-#                             'mountain', 'lake', 'floor', 'car', 'traffic light']
 semantic_visual_features = ['sky', 'grass', 'plant', 'water', 'fence', 'path', 'river', 'bench', 'pole', 'building',
                             'tree', 'earth', 'rock', 'streetlight', 'wall', 'signboard', 'sidewalk', 'railing', 'road',
                             'person', 'mountain']
@@ -46,6 +42,12 @@ if __name__ == '__main__':
     E1_dm_summary = pd.read_csv('./data/E1_dm_summary.csv')
     E1_model_summary = pd.read_csv(('./data/dm_summary_modeled.csv'))
     E1_freq_summary = pd.read_csv('./data/E1_freq_rating.csv')
+    E1_img_data = pd.read_csv('./data/E1_img_data.csv')
+
+    # Process semantic feature information
+    E1_avg_semantics = E1_img_data.groupby(['image_name', 'Condition'])[semantic_visual_features].mean().reset_index()
+    E1_avg_ratings = E1_img_data.groupby(['image_name', 'Condition'])[ratings].mean().reset_index()
+    E1_pls_avg_semantics = pd.merge(E1_avg_semantics, E1_avg_ratings, on=['image_name', 'Condition'])
 
     # Change column names in E1_freq_summary to match semantic_visual_features
     E1_freq_summary.rename(columns={feature: f'{feature}_freq' for feature in semantic_visual_features
@@ -57,13 +59,13 @@ if __name__ == '__main__':
     E1_model_summary = E1_model_summary[identity_cols + model_param]
 
     summary_all = pd.merge(E1_dm_summary, E1_model_summary, on=identity_cols)
-    for condition in summary_all['Condition'].unique():
-        for task in summary_all['Task'].unique():
-            subset = summary_all[(summary_all['Condition'] == condition) & (summary_all['Task'] == task)]
-            # correlation between reward and exploration
-            reward = subset['Reward']
-            exploration = subset['Exploration_Rate']
-            print(f'{condition} - Task {task} - Reward vs Exploration: {pearsonr(reward, exploration)}')
+    # for condition in summary_all['Condition'].unique():
+    #     for task in summary_all['Task'].unique():
+    #         subset = summary_all[(summary_all['Condition'] == condition) & (summary_all['Task'] == task)]
+    #         # correlation between reward and exploration
+    #         reward = subset['Reward']
+    #         exploration = subset['Exploration_Rate']
+    #         print(f'{condition} - Task {task} - Reward vs Exploration: {pearsonr(reward, exploration)}')
 
     residual = residual_calculator(summary_all, behav_perf + model_param, task1_name=1, task2_name=2, subj_col='Subnum',
                                    task_col='Task', method=method)
@@ -82,11 +84,16 @@ if __name__ == '__main__':
     # Z-score the data for all columns
     cols_to_zscore = residual.columns.difference(identity_cols)
     residual[cols_to_zscore] = residual[cols_to_zscore].apply(lambda x: (x - x.mean()) / x.std())
+    cols_to_zscore_image = E1_pls_avg_semantics.columns.difference(['image_name', 'Condition'])
+    E1_pls_avg_semantics[cols_to_zscore_image] = E1_pls_avg_semantics[cols_to_zscore_image].apply(lambda x: (x - x.mean()) / x.std())
 
     # Save all data
     pls_sem = residual[residual['Condition'] != 'Control'].copy()
+    E1_pls_avg_semantics_nocontrol = E1_pls_avg_semantics[E1_pls_avg_semantics['Condition'] != 'Control'].copy()
     print(pls_sem.shape)
     print(pls_sem.columns)
+    E1_pls_avg_semantics_nocontrol[ratings].to_csv('./data/PLS_Data/PLS_ImageAvgRatings_NatureUrban.csv', index=False)
+    E1_pls_avg_semantics_nocontrol[semantic_visual_features].to_csv('./data/PLS_Data/PLS_ImageAvgSemanticFeatures_NatureUrban.csv', index=False)
     pls_sem.to_csv('./data/PLS_Data/PLS_Sem_E1.csv', index=False)
     pls_sem[ratings].to_csv('./data/PLS_Data/PLS_Ratings_NatureUrban.csv', index=False)
     pls_sem[behav_perf_residual].to_csv('./data/PLS_Data/PLS_BehavPerf_NatureUrban.csv', index=False)
@@ -105,6 +112,13 @@ if __name__ == '__main__':
         visual_features_df = subset[visual_features].copy()
         model_param_df = subset[model_param_residual].copy()
         all_behav_df = subset[all_behav_residual].copy()
+
+        # image
+        image_subset = E1_pls_avg_semantics[E1_pls_avg_semantics['Condition'] == cond].copy()
+        image_ratings_subset = E1_pls_avg_semantics[E1_pls_avg_semantics['Condition'] == cond][ratings].copy()
+        image_ratings_subset.to_csv(f'./data/PLS_Data/PLS_ImageAvgRatings_{cond}.csv', index=False)
+        image_semantic_subset = E1_pls_avg_semantics[E1_pls_avg_semantics['Condition'] == cond][semantic_visual_features].copy()
+        image_semantic_subset.to_csv(f'./data/PLS_Data/PLS_ImageAvgSemanticFeatures_{cond}.csv', index=False)
 
 
         # save to csv

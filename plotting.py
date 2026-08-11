@@ -3,10 +3,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib import font_manager as fm
+from matplotlib import colors as mpl_colors
 from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 from xml.sax.saxutils import escape as xml_escape
+from robustness_check import E2_sig, E1_trial_rating_all_sig
+
+plt.rcParams.update({
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Arial', 'Helvetica', 'DejaVu Sans', 'sans-serif'],
+    'svg.fonttype': 'none',
+    'pdf.fonttype': 42,
+})
+
 
 # ======================================================================================================================
 # Load the data
@@ -19,6 +29,9 @@ E2_dm_switch = pd.read_csv('./data/E2_dm_switch.csv')
 E2_model_params = pd.read_csv('./data/E2_dm_summary_modeled.csv')
 E2_EV_history_emmeans = pd.read_csv('./data/E2_EV_history_emmeans.csv')
 E2_rank_2_emmeans = pd.read_csv('./data/E2_rank_2_emmeans.csv')
+E2_semantic_coefficients = pd.read_csv('./data/e2_semantic_feature_model_coefficients_R.csv')
+E1_trial_rating_coefficients = pd.read_csv('./data/e1_trialwise_semantic_rating_model_coefficients_R.csv')
+
 
 font_path = 'utils/AbhayaLibre-ExtraBold.ttf'
 prop = fm.FontProperties(fname=font_path)
@@ -655,6 +668,134 @@ for metric, (ylabel, filename) in e2_metrics.items():
     plt.close()
 
 # ======================================================================================================================
+# E2 significant semantic-feature effects
+# ======================================================================================================================
+def apply_e2_semantic_plot_style(ax, xlabel, ylabel):
+    ax.set_xlabel(xlabel, fontproperties=prop, fontsize=22)
+    ax.set_ylabel(ylabel, fontproperties=prop, fontsize=22)
+    for lbl in ax.get_xticklabels():
+        lbl.set_fontproperties(prop)
+        lbl.set_fontsize(18)
+    for lbl in ax.get_yticklabels():
+        lbl.set_fontproperties(prop)
+        lbl.set_fontsize(18)
+    legend = ax.get_legend()
+    if legend is not None:
+        legend.set_title('Condition')
+        legend.set_loc('lower right')
+        plt.setp(legend.get_title(), fontproperties=prop, fontsize=20)
+        plt.setp(legend.get_texts(), fontproperties=prop, fontsize=18)
+    ax.spines['left'].set_linewidth(1.6)
+    ax.spines['bottom'].set_linewidth(1.6)
+    ax.tick_params(axis='both', width=1.6, length=6)
+    sns.despine()
+    plt.tight_layout()
+
+
+E2_sig_plot_effects = E2_sig.drop_duplicates(
+    subset=['level', 'outcome', 'feature', 'model_type', 'term']
+).copy()
+
+for _, effect in E2_sig_plot_effects.iterrows():
+    outcome = effect['outcome']
+    feature = effect['feature']
+    model_type = effect['model_type']
+
+    plot_data = E2_dm_switch.loc[
+        E2_dm_switch['Condition'].isin(['Nature', 'Urban']),
+        ['Condition', feature, outcome],
+    ].dropna().copy()
+
+    feature_reference = E2_dm_switch.loc[
+        E2_dm_switch['Condition'].isin(['Nature', 'Urban']),
+        feature,
+    ].dropna()
+    feature_mean = feature_reference.mean()
+    feature_sd = feature_reference.std()
+    plot_data['feature_z'] = (plot_data[feature] - feature_mean) / feature_sd
+
+    observed_summary = (
+        plot_data.groupby(['Condition', 'feature_z'], observed=True)[outcome]
+        .mean()
+        .reset_index()
+    )
+
+    model_coefficients = E2_semantic_coefficients[
+        (E2_semantic_coefficients['level'] == effect['level'])
+        & (E2_semantic_coefficients['outcome'] == outcome)
+        & (E2_semantic_coefficients['feature'] == feature)
+        & (E2_semantic_coefficients['model_type'] == model_type)
+    ].set_index('term')['Estimate']
+
+    intercept = model_coefficients['(Intercept)']
+    feature_effect = model_coefficients['feature_z']
+    condition_effect = model_coefficients.get('ConditionUrban', 0)
+    interaction_effect = model_coefficients.get('feature_z:ConditionUrban', 0)
+
+    fig, ax = plt.subplots(figsize=(5, 6.5))
+
+    for condition in ['Nature', 'Urban']:
+        condition_data = observed_summary[observed_summary['Condition'] == condition]
+        ax.scatter(
+            condition_data['feature_z'],
+            condition_data[outcome],
+            s=45,
+            color=condition_palette[condition],
+            edgecolor='black',
+            linewidth=0.7,
+            alpha=0.55,
+        )
+
+        x_grid = np.linspace(
+            condition_data['feature_z'].min(),
+            condition_data['feature_z'].max(),
+            200,
+        )
+        linear_predictor = intercept + feature_effect * x_grid
+        if condition == 'Urban':
+            linear_predictor += condition_effect + interaction_effect * x_grid
+
+        if effect['family'] == 'binomial':
+            predicted_outcome = 1 / (1 + np.exp(-np.clip(linear_predictor, -700, 700)))
+        else:
+            predicted_outcome = linear_predictor
+
+        ax.plot(
+            x_grid,
+            predicted_outcome,
+            color=condition_palette[condition],
+            linewidth=3,
+            label=condition,
+        )
+
+    ax.legend(title='Condition', loc='lower right')
+
+    if effect['family'] == 'binomial':
+        ax.set_ylim(-0.03, 1.03)
+
+    effect_name = 'Interaction' if model_type == 'interaction' else 'Feature'
+    adjusted_p = effect['p_value_adjusted']
+    adjusted_p_text = f'{adjusted_p:.3f}' if adjusted_p >= 0.001 else '< 0.001'
+    adjusted_p_operator = '=' if adjusted_p >= 0.001 else ''
+    ax.text(
+        0.03,
+        0.97,
+        f'{effect_name} FDR-adjusted p {adjusted_p_operator}{adjusted_p_text}',
+        transform=ax.transAxes,
+        va='top',
+        fontproperties=prop,
+        fontsize=16,
+    )
+
+    ylabel = e2_metrics.get(outcome, (outcome, ''))[0]
+    xlabel = f'{feature.replace("_", " ").title()} (standardized)'
+    apply_e2_semantic_plot_style(ax, xlabel, ylabel)
+
+    output_name = f'E2_{outcome}_{feature}_{model_type}_semantic_effect.png'
+    plt.savefig(f'./figures/{output_name}', dpi=600)
+    plt.close()
+
+# ======================================================================================================================
 # Reward by exploration status
 # ======================================================================================================================
 reward_strategy_summary = (
@@ -793,3 +934,354 @@ except PermissionError:
     fallback_docx_path = docx_path.with_name(f'{docx_path.stem}_plain{docx_path.suffix}')
     _write_model_parameter_docx(model_param_table, fallback_docx_path)
     print(f'Could not overwrite {model_parameter_docx_path}; wrote {fallback_docx_path} instead.')
+
+# ======================================================================================================================
+# E2 significant semantic-feature effects: raw trial-level plots
+# ======================================================================================================================
+# Each scatter point below is one unaveraged E2 trial from the same Nature-versus-Urban data used in the mixed models.
+# Feature values of zero are retained because feature absence was included when the models were fitted.
+# Small deterministic jitter is used only to reveal overlapping points; model predictions use the unjittered values.
+# This final block overwrites the earlier binned PNGs with raw-data versions and intentionally exports PNG only.
+raw_plot_rng = np.random.default_rng(20260804)
+
+for _, effect in E2_sig_plot_effects.iterrows():
+    outcome = effect['outcome']
+    feature = effect['feature']
+    model_type = effect['model_type']
+
+    raw_plot_data = E2_dm_switch.loc[
+        E2_dm_switch['Condition'].isin(['Nature', 'Urban']),
+        ['Subnum', 'Condition', feature, outcome],
+    ].dropna().copy()
+
+    # Match the feature standardization used in the R models before outcome-specific missing rows were removed.
+    feature_reference = E2_dm_switch.loc[
+        E2_dm_switch['Condition'].isin(['Nature', 'Urban']),
+        feature,
+    ].dropna()
+    feature_mean = feature_reference.mean()
+    feature_sd = feature_reference.std()
+    raw_plot_data['feature_z'] = (raw_plot_data[feature] - feature_mean) / feature_sd
+
+    model_coefficients = E2_semantic_coefficients[
+        (E2_semantic_coefficients['level'] == effect['level'])
+        & (E2_semantic_coefficients['outcome'] == outcome)
+        & (E2_semantic_coefficients['feature'] == feature)
+        & (E2_semantic_coefficients['model_type'] == model_type)
+    ].set_index('term')['Estimate']
+
+    intercept = model_coefficients['(Intercept)']
+    feature_effect = model_coefficients['feature_z']
+    condition_effect = model_coefficients.get('ConditionUrban', 0)
+    interaction_effect = model_coefficients.get('feature_z:ConditionUrban', 0)
+
+    fig, ax = plt.subplots(figsize=(5, 6.5))
+
+    for condition in ['Nature', 'Urban']:
+        condition_data = raw_plot_data[raw_plot_data['Condition'] == condition]
+
+        # Jitter affects display positions only and does not alter the raw data or fitted model lines.
+        x_display = condition_data['feature_z'].to_numpy() + raw_plot_rng.normal(
+            loc=0,
+            scale=0.015,
+            size=len(condition_data),
+        )
+        y_display = condition_data[outcome].to_numpy().copy()
+        if effect['family'] == 'binomial':
+            y_display = y_display + raw_plot_rng.normal(
+                loc=0,
+                scale=0.018,
+                size=len(condition_data),
+            )
+
+        ax.scatter(
+            x_display,
+            y_display,
+            s=12,
+            color=condition_palette[condition],
+            edgecolor='none',
+            alpha=0.09,
+            rasterized=True,
+        )
+
+        # Draw the fixed-effect prediction only across the feature range observed in this condition.
+        x_grid = np.linspace(
+            condition_data['feature_z'].min(),
+            condition_data['feature_z'].max(),
+            200,
+        )
+        linear_predictor = intercept + feature_effect * x_grid
+        if condition == 'Urban':
+            linear_predictor += condition_effect + interaction_effect * x_grid
+
+        if effect['family'] == 'binomial':
+            predicted_outcome = 1 / (1 + np.exp(-np.clip(linear_predictor, -700, 700)))
+        else:
+            predicted_outcome = linear_predictor
+
+        ax.plot(
+            x_grid,
+            predicted_outcome,
+            color=condition_palette[condition],
+            linewidth=3,
+            label=condition,
+        )
+
+    ax.legend(title='Condition', loc='lower right')
+    if effect['family'] == 'binomial':
+        ax.set_ylim(-0.07, 1.07)
+
+    effect_name = 'Interaction' if model_type == 'interaction' else 'Feature'
+    adjusted_p = effect['p_value_adjusted']
+    adjusted_p_text = f'{adjusted_p:.3f}' if adjusted_p >= 0.001 else '< 0.001'
+    adjusted_p_operator = '=' if adjusted_p >= 0.001 else ''
+    ax.text(
+        0.03,
+        0.97,
+        f'{effect_name} FDR-adjusted p {adjusted_p_operator}{adjusted_p_text}',
+        transform=ax.transAxes,
+        va='top',
+        fontproperties=prop,
+        fontsize=16,
+    )
+
+    ylabel = e2_metrics.get(outcome, (outcome, ''))[0]
+    xlabel = f'{feature.replace("_", " ").title()} (standardized)'
+    apply_e2_semantic_plot_style(ax, xlabel, ylabel)
+
+    output_name = f'E2_{outcome}_{feature}_{model_type}_semantic_effect.png'
+    plt.savefig(f'./figures/{output_name}', dpi=600)
+    plt.close()
+
+# ======================================================================================================================
+# E1 trial-wise semantic effects surviving the pooled global FDR correction
+# ======================================================================================================================
+# One asymmetric figure replaces 15 separate panels: additive effects are combined by feature and rating, while the
+# naturalness interactions share one coefficient axis. Open interaction markers flag weak Nature-image support (<10).
+e1_global_sig = E1_trial_rating_all_sig.copy()
+e1_additive_sig = e1_global_sig[e1_global_sig['model_type'] == 'additive'].copy()
+e1_interaction_sig = e1_global_sig[e1_global_sig['model_type'] == 'interaction'].copy()
+
+e1_additive_sig['semantic_feature'] = e1_additive_sig['term'].str.replace('_z', '', regex=False)
+e1_interaction_sig['semantic_feature'] = (
+    e1_interaction_sig['term'].str.replace('_z:ConditionUrban', '', regex=False)
+)
+e1_additive_sig['p_marker_size'] = np.select(
+    [
+        e1_additive_sig['p_value_adjusted_all'] < 0.001,
+        e1_additive_sig['p_value_adjusted_all'] < 0.01,
+        e1_additive_sig['p_value_adjusted_all'] < 0.05,
+    ],
+    [840, 720, 600],
+    default=np.nan,
+)
+
+feature_order = ['road', 'fence', 'grass', 'mountain']
+rating_order = ['aesthetic', 'familiarity', 'engagement', 'fascination', 'mystery', 'imagability', 'control']
+rating_labels = {
+    'aesthetic': 'Aesthetic',
+    'familiarity': 'Familiarity',
+    'engagement': 'Engagement',
+    'fascination': 'Fascination',
+    'mystery': 'Mystery',
+    'imagability': 'Imageability',
+    'control': 'Control',
+}
+x_positions = {rating: index for index, rating in enumerate(rating_order)}
+y_positions = {feature: len(feature_order) - index - 1 for index, feature in enumerate(feature_order)}
+
+# Separate figure 1: additive feature-by-rating associations.
+fig_additive, ax_effect_map = plt.subplots(figsize=(6.8, 4.6), constrained_layout=True)
+
+max_abs_additive = e1_additive_sig['Estimate'].abs().max()
+effect_norm = mpl_colors.TwoSlopeNorm(vmin=-max_abs_additive, vcenter=0, vmax=max_abs_additive)
+effect_cmap = plt.get_cmap('RdBu_r')
+
+for _, effect in e1_additive_sig.iterrows():
+    x_value = x_positions[effect['outcome']]
+    y_value = y_positions[effect['semantic_feature']]
+    marker_size = effect['p_marker_size']
+    marker_color = effect_cmap(effect_norm(effect['Estimate']))
+    luminance = 0.299 * marker_color[0] + 0.587 * marker_color[1] + 0.114 * marker_color[2]
+    label_color = 'white' if luminance < 0.55 else '#272727'
+
+    ax_effect_map.scatter(
+        x_value, y_value, s=marker_size, color=marker_color,
+        edgecolor='white', linewidth=0.8, zorder=3,
+    )
+    ax_effect_map.text(
+        x_value, y_value, f"{effect['Estimate']:.2f}",
+        ha='center', va='center', fontproperties=prop, fontsize=12, color=label_color, zorder=4,
+    )
+
+ax_effect_map.set_xticks(range(len(rating_order)))
+ax_effect_map.set_xticklabels(
+    [rating_labels[rating] for rating in rating_order],
+    rotation=30, ha='right', rotation_mode='anchor',
+)
+ax_effect_map.set_yticks(range(len(feature_order)))
+ax_effect_map.set_yticklabels([feature.title() for feature in reversed(feature_order)])
+for tick_label in ax_effect_map.get_xticklabels() + ax_effect_map.get_yticklabels():
+    tick_label.set_fontproperties(prop)
+    tick_label.set_fontsize(12)
+ax_effect_map.set_xlim(-0.55, len(rating_order) - 0.45)
+ax_effect_map.set_ylim(-0.55, len(feature_order) - 0.45)
+ax_effect_map.spines[['top', 'right', 'left', 'bottom']].set_visible(False)
+ax_effect_map.tick_params(axis='both', length=0)
+
+p_legend_labels = ['p < .001', 'p < .01', 'p < .05']
+p_legend_sizes = [720, 600, 480]
+p_legend_handles = [
+    ax_effect_map.scatter(
+        [], [], s=marker_size,
+        facecolor='#B4C0E4', edgecolor='white', linewidth=0.8,
+    )
+    for marker_size in p_legend_sizes
+]
+additive_legend = ax_effect_map.legend(
+    p_legend_handles, p_legend_labels,
+    title= 'p adjusted fdr', bbox_to_anchor=(1.2, 0.5),
+    borderaxespad=0, handletextpad=1.0, handleheight=2.5, labelspacing=1.5,
+    fontsize=10, title_fontsize=12,
+)
+plt.setp(additive_legend.get_title(), fontproperties=prop, fontsize=12)
+plt.setp(additive_legend.get_texts(), fontproperties=prop, fontsize=10)
+coefficient_mappable = plt.cm.ScalarMappable(norm=effect_norm, cmap=effect_cmap)
+coefficient_colorbar = fig_additive.colorbar(
+    coefficient_mappable, ax=ax_effect_map, orientation='horizontal',
+    fraction=0.06, pad=0.05, aspect=35,
+)
+coefficient_colorbar.set_label(
+    'Fixed-effect coefficient',
+    fontproperties=prop, fontsize=12, labelpad=2,
+)
+coefficient_colorbar.outline.set_visible(False)
+coefficient_colorbar.ax.tick_params(length=2, labelsize=10)
+for tick_label in coefficient_colorbar.ax.get_xticklabels():
+    tick_label.set_fontproperties(prop)
+    tick_label.set_fontsize(10)
+
+additive_output_stem = './figures/E1_trialwise_semantic_rating_global_fdr_additive_effects'
+fig_additive.savefig(f'{additive_output_stem}.png', dpi=600, bbox_inches='tight')
+plt.close(fig_additive)
+
+
+
+
+# Combined figures 2 and 3: interaction estimates and condition-specific slopes share the feature axis.
+interaction_order = ['building', 'railing', 'grass', 'signboard']
+interaction_y = {
+    feature: len(interaction_order) - index - 1
+    for index, feature in enumerate(interaction_order)
+}
+interaction_ticks = [0, 1, 2, 10, 100]
+slope_change_ticks = [-100, -20, -10, -2, -1, 0, 1, 2]
+
+# Nature is the reference condition; the Urban slope is the Nature slope plus the Urban interaction term.
+naturalness_interaction_coefficients = E1_trial_rating_coefficients[
+    (E1_trial_rating_coefficients['outcome'] == 'naturalness')
+    & (E1_trial_rating_coefficients['model_type'] == 'interaction')
+    & (E1_trial_rating_coefficients['converged'] == True)
+    & (E1_trial_rating_coefficients['singular'] == False)
+].set_index('term')
+
+condition_slope_rows = []
+for feature in interaction_order:
+    nature_slope = naturalness_interaction_coefficients.loc[f'{feature}_z', 'Estimate']
+    urban_slope = nature_slope + naturalness_interaction_coefficients.loc[
+        f'{feature}_z:ConditionUrban', 'Estimate'
+    ]
+    condition_slope_rows.append({
+        'feature': feature,
+        'nature_slope': nature_slope,
+        'urban_slope': urban_slope,
+    })
+condition_slopes = pd.DataFrame(condition_slope_rows).set_index('feature')
+
+fig_combined, (ax_interaction_panel, ax_slope_panel) = plt.subplots(
+    1, 2, figsize=(8, 5), sharey=True, constrained_layout=True,
+    gridspec_kw={'width_ratios': [1, 1.10], 'wspace': 0.10},
+)
+
+for _, effect in e1_interaction_sig.iterrows():
+    feature = effect['semantic_feature']
+    y_value = interaction_y[feature]
+    estimate = effect['Estimate']
+    ci_half_width = 1.96 * effect['Std. Error']
+    ax_interaction_panel.errorbar(
+        estimate, y_value, xerr=ci_half_width, fmt='o', markersize=10,
+        markerfacecolor='#B64342', markeredgecolor='#B64342', markeredgewidth=2,
+        ecolor='#B64342', elinewidth=2, capsize=5, zorder=3
+    )
+
+ax_interaction_panel.axvline(0, color='#767676', linewidth=1.2, linestyle='--', zorder=1)
+ax_interaction_panel.set_xscale('symlog', linthresh=2, linscale=0.9, base=10)
+ax_interaction_panel.set_xlim(-0.12, 140)
+ax_interaction_panel.set_xticks(interaction_ticks)
+ax_interaction_panel.set_xticklabels([f'{tick:g}' for tick in interaction_ticks])
+ax_interaction_panel.set_yticks(range(len(interaction_order)))
+ax_interaction_panel.set_yticklabels([feature.title() for feature in reversed(interaction_order)])
+ax_interaction_panel.set_ylim(-0.55, len(interaction_order) - 0.45)
+ax_interaction_panel.set_xlabel(
+    'Interaction Effects (Urban \N{MINUS SIGN} Nature)',
+    fontproperties=prop, fontsize=12,
+)
+ax_interaction_panel.spines[['top', 'right', 'left']].set_visible(False)
+ax_interaction_panel.tick_params(axis='y', length=0)
+ax_interaction_panel.tick_params(axis='x', length=2)
+
+for feature in interaction_order:
+    y_value = interaction_y[feature]
+    nature_slope = condition_slopes.loc[feature, 'nature_slope']
+    urban_slope = condition_slopes.loc[feature, 'urban_slope']
+    ax_slope_panel.annotate(
+        '', xy=(urban_slope, y_value), xytext=(nature_slope, y_value),
+        arrowprops={
+            'arrowstyle': '->', 'color': '#9A9A9A', 'linewidth': 2,
+            'mutation_scale': 10, 'shrinkA': 6, 'shrinkB': 6,
+        },
+        zorder=1,
+    )
+    ax_slope_panel.scatter(
+        nature_slope, y_value,
+        s=200, color=nature_color, edgecolor='white', linewidth=1.2, zorder=3,
+    )
+    ax_slope_panel.scatter(
+        urban_slope, y_value,
+        s=200, color=urban_color, edgecolor='white', linewidth=1.2, zorder=3,
+    )
+
+ax_slope_panel.axvline(0, color='#767676', linewidth=1.2, linestyle='--', zorder=0)
+ax_slope_panel.set_xscale('symlog', linthresh=2, linscale=0.9, base=10)
+ax_slope_panel.set_xlim(-120, 3)
+ax_slope_panel.set_xticks(slope_change_ticks)
+ax_slope_panel.set_xticklabels([f'{tick:g}' for tick in slope_change_ticks])
+ax_slope_panel.set_xlabel(
+    'Condition-Specific Feature Slope with Naturalness',
+    fontproperties=prop, fontsize=12,
+)
+ax_slope_panel.spines[['top', 'right', 'left']].set_visible(False)
+ax_slope_panel.tick_params(axis='y', left=False, labelleft=False)
+ax_slope_panel.tick_params(axis='x', length=2)
+
+for axis in (ax_interaction_panel, ax_slope_panel):
+    for tick_label in axis.get_xticklabels() + axis.get_yticklabels():
+        tick_label.set_fontproperties(prop)
+        tick_label.set_fontsize(12)
+
+combined_nature_handle = ax_slope_panel.scatter(
+    [], [], s=200, color=nature_color, edgecolor='white', linewidth=1.2,
+)
+combined_urban_handle = ax_slope_panel.scatter(
+    [], [], s=200, color=urban_color, edgecolor='white', linewidth=1.2,
+)
+# combined_legend = ax_slope_panel.legend(
+#     [combined_nature_handle, combined_urban_handle], ['Nature', 'Urban'],
+#     loc='lower center', bbox_to_anchor=(0.5, -0.28),
+#     ncol=2, frameon=False, handletextpad=0.5, columnspacing=0.5,
+# )
+# plt.setp(combined_legend.get_texts(), fontproperties=prop, fontsize=10)
+
+combined_output_stem = './figures/E1_trialwise_naturalness_interaction_and_slope_changes'
+fig_combined.savefig(f'{combined_output_stem}.png', dpi=600, bbox_inches='tight')
+plt.close(fig_combined)

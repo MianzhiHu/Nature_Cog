@@ -1,4 +1,5 @@
 library(ggplot2)
+library(rlang)
 library(lme4)
 library(lmerTest)
 library(effects)
@@ -26,11 +27,12 @@ library(emmeans)
 dm_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_dm_data.csv")
 dm_summary <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary.csv")
 dm_summary_wide <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_dm_summary_task_wide.csv")
-dm_summary_modeled <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_summary_modeled.csv")
+dm_summary_modeled <- read.csv("D:/PycharmProjects/Nature_Cog/data/dm_summary_modeled.csv")
 dm_composite <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/agg_condition_value_counts.csv")
+E2_dm_summary_modeled <- read.csv("D:/PycharmProjects/Nature_Cog/data/E2_dm_summary_modeled.csv")
 
 wsls_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/dm_switch.csv")
-E2_wsls_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E2_dm_switch.csv")
+E2_wsls_data <- read.csv("D:/PycharmProjects/Nature_Cog/data/E2_dm_switch.csv")
 exploration <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_exploration_data.csv")
 E1_behavioral_mw <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E1_behavioral_moving_window.csv")
 
@@ -50,11 +52,6 @@ wsls_data$Condition <- factor(wsls_data$Condition, levels = c('Nature', 'Urban',
 wsls_data$Task <- factor(wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
 wsls_data$exploration <- factor(wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
 wsls_data$EV_rank <- factor(wsls_data$EV_rank, levels = c('1', '2', '3', '4'))
-
-E2_wsls_data$Condition <- factor(E2_wsls_data$Condition, levels = c('Nature', 'Urban', 'Control'))
-E2_wsls_data$Task <- factor(E2_wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
-E2_wsls_data$exploration <- factor(E2_wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
-E2_wsls_data$EV_rank <- factor(E2_wsls_data$EV_rank, levels = c('1', '2', '3', '4'))
 
 dm_composite$agg_Condition <- factor(dm_composite$agg_Condition, levels = c('Mid Composite Score', 'High Composite Score', 'Low Composite Score'))
 dm_composite$Task <- factor(dm_composite$Task, levels = c(1, 2), labels = c("First", "Second"))
@@ -76,56 +73,6 @@ dm_summary_modeled_wide <- dm_summary_modeled %>%
     names_prefix = "Task_"
   )
 
-# ==============================================================================
-# Generalized Additive Mixed Models
-# ==============================================================================
-m <- gam(
-  Exploration ~ Condition + s(WindowStart) + s(WindowStart, by = Condition) + s(Subnum, bs = "re"),
-  data = E1_behavioral_mw_2,
-  method = "REML"
-)
-
-plot(m)
-summary(m)
-p <- plot_model(m,type  = "pred", 
-                terms = c("window_id [all]", "Condition"))
-p + geom_vline(xintercept = 91, linetype = "dotted")
-
-# ==============================================================================
-# Linear Mixed-Effects Models
-# ==============================================================================
-mixed_effect <- lmer(alpha ~ Condition * poly(window_id, 3) + (1 + window_id|Subnum),
-              data = delta)
-
-summary(mixed_effect)
-anova(mixed_effect)
-p <- plot_model(mixed_effect,type  = "pred", 
-           terms = c("window_id [all]", "Condition"))
-p + geom_vline(xintercept = 91, linetype = "dotted")
-
-# Basic behavioral;
-model <- glm(HighFreqOption_IGT ~ Condition + HighFreqOption_SGT,
-                     data = dm_summary_overall)
-
-summary(model)
-plot(allEffects(model))
-
-
-anova(mixed_effect)
-p <- plot_model(mixed_effect,type  = "pred", 
-                terms = c("window_id [all]", "Condition"))
-p + geom_vline(xintercept = 91, linetype = "dotted")
-
-# ==============================================================================
-# General Linear Model for Differences
-# ==============================================================================
-diff <- delta %>%
-  filter(window_id==92)
-
-model <- glm(alpha_diff ~ naturalness + disorderliness + aesthetic + Condition,
-              data=diff)
-summary(model)
-plot(allEffects(model))
 
 # ==============================================================================
 # General Linear Model for images
@@ -214,7 +161,6 @@ summary(ex2_model)
 plot(allEffects(ex2_model))
 
 
-
 rank_model <- clmm(EV_rank ~ Condition * Task + (1 | Subnum), data = wsls_data, link = "logit")
 summary(rank_model)
 plot(ggpredict(rank_model, terms = c("Condition", "Task")))
@@ -245,22 +191,28 @@ plot(allEffects(ex_model))
 # ==============================================================================
 # E2 Behavioral Analysis
 # ==============================================================================
+# Possible levels: ('Nature', 'Urban', 'Control') or ('Control', 'Nature', 'Urban')
+E2_wsls_data$Condition <- factor(E2_wsls_data$Condition, levels = c('Control', 'Nature', 'Urban'))
+E2_wsls_data$Task <- factor(E2_wsls_data$Task, levels = c(1, 2), labels = c("First", "Second"))
+E2_wsls_data$exploration <- factor(E2_wsls_data$exploration, levels = c(0, 1), labels = c('exploitation', 'exploration'))
+E2_wsls_data$EV_rank <- factor(E2_wsls_data$EV_rank, levels = c('1', '2', '3', '4'))
+
 E2_wsls_exploration <- E2_wsls_data %>%
   filter(exploration == 'exploration')
 
-model <- lmer(Reward ~ Condition + (1|Subnum), data = E2_wsls_data)
-summary(model)
-plot(allEffects(model))
+reward_model <- lmer(Reward ~ Condition + (1|Subnum), data = E2_wsls_data)
+summary(reward_model)
+plot(allEffects(reward_model))
 
-model <- glmer(BestChoice ~ Condition + (1|Subnum), family='binomial', data = E2_wsls_data)
-summary(model)
-plot(allEffects(model))
+optimal_model <- glmer(BestChoice ~ Condition + (1|Subnum), family='binomial', data = E2_wsls_data)
+summary(optimal_model)
+plot(allEffects(optimal_model))
 
 value_dis_model <- lmer(value_gap ~ Condition + (1|Subnum), data = E2_wsls_data)
 summary(value_dis_model)
 plot(allEffects(value_dis_model))
 
-switch_model <- glmer(Switch ~ Condition + (1|Subnum), family=binomial, data = E2_wsls_data)
+switch_model <- glmer(Switch ~ Condition + (1|Subnum), family='binomial', data = E2_wsls_data)
 summary(switch_model)
 plot(allEffects(switch_model))
 
@@ -299,6 +251,32 @@ ex_model <- glmer(exploration ~ (sky+grass+plant+water+fence+path+river+bench+
 summary(ex_model)
 plot(allEffects(ex_model))
 
+# E2 Parameter Analysis
+E2_dm_summary_modeled$Condition <- 
+  factor(E2_dm_summary_modeled$Condition, levels = c('Nature', 'Urban', 'Control'))
+
+t_model <- glm(t ~ Condition, data = E2_dm_summary_modeled)
+summary(t_model)
+plot(allEffects(t_model))
+
+dis_sd_model <- glm(dis_sd ~ Condition, data = E2_dm_summary_modeled)
+summary(dis_sd_model)
+plot(allEffects(dis_sd_model))
+
+noise_sd_model <- glm(noise_sd ~ Condition, data = E2_dm_summary_modeled)
+summary(noise_sd_model)
+plot(allEffects(noise_sd_model))
+
+decay_model <- glm(decay ~ Condition, data = E2_dm_summary_modeled)
+summary(decay_model)
+plot(allEffects(decay_model))
+
+decay_center_model <- glm(decay_center ~ Condition, data = E2_dm_summary_modeled)
+summary(decay_center_model)
+plot(allEffects(decay_center_model))
+
+
+
 
 # ==============================================================================
 # E1 Participant-Level Semantic Difference Analysis
@@ -320,21 +298,16 @@ e1_difference_outcomes <- c(
   "Switch_difference",
   "WinStay_difference",
   "LoseShift_difference",
-  "t_difference",
-  "dis_sd_difference",
-  "noise_sd_difference",
-  "decay_difference",
-  "decay_center_difference",
   "Exploration_Rate_difference",
   "rank_2_exploration_rate_difference",
   "EV_history_exploration_difference"
 )
 
-e1_semantic_output_dir <- "C:/Users/zuire/PycharmProjects/Nature_Cog/analysis_outputs"
+e1_semantic_output_dir <- "analysis_outputs"
 dir.create(e1_semantic_output_dir, showWarnings = FALSE, recursive = TRUE)
 
 E1_semantic_difference_data <- read.csv(
-  "C:/Users/zuire/PycharmProjects/Nature_Cog/data/PLS_Data/PLS_Sem_E1.csv"
+  file.path("data", "PLS_Data", "PLS_Sem_E1.csv")
 )
 E1_semantic_difference_data$Condition <- factor(
   E1_semantic_difference_data$Condition,
@@ -461,10 +434,11 @@ cat("Saved coefficient table to e1_semantic_difference_model_coefficients_R.csv\
 
 
 # ==============================================================================
-# E2 Trial-Wise Semantic Feature Analysis
+# E2 Semantic Feature Analysis
 # ==============================================================================
-# This section tests each semantic feature one at a time and saves the fixed-effect
-# coefficient table directly from summary(lmer/glmer).
+# Trial-level behavioral outcomes use lmer/glmer with a participant random
+# intercept. Participant-level model parameters use Gaussian glm models.
+# Trial number is intentionally not included as a covariate.
 
 semantic_features <- c(
   "sky", "grass", "plant", "water", "fence", "path", "river", "bench",
@@ -486,28 +460,46 @@ trial_outcomes <- tibble::tribble(
 )
 
 parameter_outcomes <- tibble::tribble(
-  ~outcome,        ~family,    ~subset,
-  "t",             "gaussian", "participant_mean_semantics",
-  "dis_sd",        "gaussian", "participant_mean_semantics",
-  "noise_sd",      "gaussian", "participant_mean_semantics",
-  "decay",         "gaussian", "participant_mean_semantics",
-  "decay_center",  "gaussian", "participant_mean_semantics"
+  ~outcome,       ~family,    ~subset,
+  "t",            "gaussian", "participant_mean_semantics",
+  "dis_sd",       "gaussian", "participant_mean_semantics",
+  "noise_sd",     "gaussian", "participant_mean_semantics",
+  "decay",        "gaussian", "participant_mean_semantics",
+  "decay_center", "gaussian", "participant_mean_semantics"
 )
 
-semantic_output_dir <- "C:/Users/zuire/PycharmProjects/Nature_Cog/data"
+semantic_output_dir <- "data"
 dir.create(semantic_output_dir, showWarnings = FALSE, recursive = TRUE)
 
-E2_semantic_trial_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E2_dm_switch.csv")
-E2_semantic_param_data <- read.csv("C:/Users/zuire/PycharmProjects/Nature_Cog/data/E2_dm_summary_modeled.csv")
+E2_semantic_trial_data <- read.csv(file.path("data", "E2_dm_switch.csv"))
 
 E2_semantic_trial_data$Condition <- factor(
   E2_semantic_trial_data$Condition,
   levels = c("Nature", "Urban", "Control")
 )
-E2_semantic_param_data$Condition <- factor(
-  E2_semantic_param_data$Condition,
-  levels = c("Nature", "Urban", "Control")
-)
+
+E2_semantic_means <- E2_semantic_trial_data %>%
+  mutate(Condition = as.character(Condition)) %>%
+  group_by(Subnum, Condition) %>%
+  summarise(
+    across(
+      all_of(semantic_features),
+      ~ if (all(is.na(.x))) NA_real_ else mean(.x, na.rm = TRUE)
+    ),
+    .groups = "drop"
+  )
+
+E2_semantic_parameter_data <- read.csv(
+  file.path("data", "E2_dm_summary_modeled.csv")
+) %>%
+  mutate(Condition = as.character(Condition)) %>%
+  left_join(E2_semantic_means, by = c("Subnum", "Condition")) %>%
+  mutate(
+    Condition = factor(
+      Condition,
+      levels = c("Nature", "Urban", "Control")
+    )
+  )
 
 standardize_vector <- function(x) {
   x <- as.numeric(x)
@@ -526,38 +518,37 @@ make_trial_subset <- function(data, outcome, subset_name) {
     filter(!is.na(.data[[outcome]]), !is.na(Condition), !is.na(Subnum))
 }
 
-make_parameter_data <- function(trial_data, parameter_data) {
-  semantic_means <- trial_data %>%
-    group_by(Subnum, Condition) %>%
-    summarise(across(all_of(semantic_features), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
-
-  parameter_data %>%
-    left_join(semantic_means, by = c("Subnum", "Condition")) %>%
-    mutate(Condition = factor(Condition, levels = c("Nature", "Urban", "Control")))
-}
-
-fit_semantic_model <- function(data, outcome, family_name, interaction = FALSE, mixed = TRUE) {
+fit_semantic_model <- function(data, outcome, family_name, interaction = FALSE) {
   rhs <- if (interaction) {
     "feature_z * Condition"
   } else {
     "feature_z + Condition"
   }
 
-  if (mixed) {
-    formula_text <- paste0(outcome, " ~ ", rhs, " + Trial + (1|Subnum)")
-    if (family_name == "binomial") {
-      glmer(
-        as.formula(formula_text),
-        data = data,
-        family = binomial
-      )
-    } else {
-      lmer(as.formula(formula_text), data = data)
-    }
+  formula_text <- paste0(outcome, " ~ ", rhs, " + (1|Subnum) + (1 | image_name)")
+  if (family_name == "binomial") {
+    glmer(
+      as.formula(formula_text),
+      data = data,
+      family = binomial
+    )
   } else {
-    formula_text <- paste0(outcome, " ~ ", rhs)
-    lm(as.formula(formula_text), data = data)
+    lmer(as.formula(formula_text), data = data)
   }
+}
+
+fit_parameter_model <- function(data, outcome, interaction = FALSE) {
+  rhs <- if (interaction) {
+    "feature_z * Condition"
+  } else {
+    "feature_z + Condition"
+  }
+
+  glm(
+    as.formula(paste0(outcome, " ~ ", rhs)),
+    data = data,
+    family = gaussian()
+  )
 }
 
 extract_model_coefficients <- function(model, level_name, outcome, family_name, subset_name,
@@ -584,7 +575,7 @@ extract_model_coefficients <- function(model, level_name, outcome, family_name, 
   )
 }
 
-run_semantic_feature_grid <- function(data, outcomes, level_name, mixed = TRUE) {
+run_semantic_feature_grid <- function(data, outcomes) {
   results <- list()
   row_id <- 1
 
@@ -593,11 +584,7 @@ run_semantic_feature_grid <- function(data, outcomes, level_name, mixed = TRUE) 
     family_name <- outcomes$family[outcome_i]
     subset_name <- outcomes$subset[outcome_i]
 
-    base_data <- if (level_name == "trial") {
-      make_trial_subset(data, outcome, subset_name)
-    } else {
-      data %>% filter(!is.na(.data[[outcome]]), !is.na(Condition), !is.na(Subnum))
-    }
+    base_data <- make_trial_subset(data, outcome, subset_name)
 
     for (feature_name in semantic_features) {
       model_data <- base_data %>%
@@ -614,7 +601,7 @@ run_semantic_feature_grid <- function(data, outcomes, level_name, mixed = TRUE) 
 
       n_obs <- nrow(model_data)
       n_subjects <- dplyr::n_distinct(model_data$Subnum)
-      model_name <- ifelse(mixed, ifelse(family_name == "binomial", "glmer", "lmer"), "lm")
+      model_name <- ifelse(family_name == "binomial", "glmer", "lmer")
 
       for (model_type in c("additive", "interaction")) {
         model <- tryCatch(
@@ -622,15 +609,14 @@ run_semantic_feature_grid <- function(data, outcomes, level_name, mixed = TRUE) 
             model_data,
             outcome,
             family_name,
-            interaction = model_type == "interaction",
-            mixed = mixed
+            interaction = model_type == "interaction"
           ),
           error = function(e) e
         )
 
         if (inherits(model, "error")) {
           results[[row_id]] <- tibble(
-            level = level_name,
+            level = "trial",
             outcome = outcome,
             family = family_name,
             subset = subset_name,
@@ -645,7 +631,7 @@ run_semantic_feature_grid <- function(data, outcomes, level_name, mixed = TRUE) 
         } else {
           results[[row_id]] <- extract_model_coefficients(
             model,
-            level_name,
+            "trial",
             outcome,
             family_name,
             subset_name,
@@ -665,23 +651,89 @@ run_semantic_feature_grid <- function(data, outcomes, level_name, mixed = TRUE) 
   bind_rows(results)
 }
 
-E2_semantic_parameter_data <- make_parameter_data(
-  E2_semantic_trial_data,
-  E2_semantic_param_data
-)
+run_parameter_feature_grid <- function(data, outcomes) {
+  results <- list()
+  row_id <- 1
+
+  for (outcome_i in seq_len(nrow(outcomes))) {
+    outcome <- outcomes$outcome[outcome_i]
+    family_name <- outcomes$family[outcome_i]
+    subset_name <- outcomes$subset[outcome_i]
+
+    base_data <- data %>%
+      filter(!is.na(.data[[outcome]]), !is.na(Condition), !is.na(Subnum))
+
+    for (feature_name in semantic_features) {
+      model_data <- base_data %>%
+        filter(!is.na(.data[[feature_name]])) %>%
+        mutate(
+          feature_z = standardize_vector(.data[[feature_name]]),
+          Condition = droplevels(Condition)
+        ) %>%
+        filter(!is.na(feature_z))
+
+      if (nrow(model_data) == 0 || nlevels(model_data$Condition) < 2) {
+        next
+      }
+
+      n_obs <- nrow(model_data)
+      n_subjects <- dplyr::n_distinct(model_data$Subnum)
+
+      for (model_type in c("additive", "interaction")) {
+        model <- tryCatch(
+          fit_parameter_model(
+            model_data,
+            outcome,
+            interaction = model_type == "interaction"
+          ),
+          error = function(e) e
+        )
+
+        if (inherits(model, "error")) {
+          results[[row_id]] <- tibble(
+            level = "participant_parameter",
+            outcome = outcome,
+            family = family_name,
+            subset = subset_name,
+            feature = feature_name,
+            model_type = model_type,
+            model = "glm",
+            n_obs = n_obs,
+            n_subjects = n_subjects,
+            error = model$message,
+            term = NA_character_
+          )
+        } else {
+          results[[row_id]] <- extract_model_coefficients(
+            model,
+            "participant_parameter",
+            outcome,
+            family_name,
+            subset_name,
+            feature_name,
+            model_type,
+            n_obs,
+            n_subjects,
+            "glm"
+          )
+        }
+
+        row_id <- row_id + 1
+      }
+    }
+  }
+
+  bind_rows(results)
+}
 
 trial_semantic_results <- run_semantic_feature_grid(
   E2_semantic_trial_data,
-  trial_outcomes,
-  level_name = "trial",
-  mixed = TRUE
+  trial_outcomes
 )
 
-parameter_semantic_results <- run_semantic_feature_grid(
+parameter_semantic_results <- run_parameter_feature_grid(
   E2_semantic_parameter_data,
-  parameter_outcomes,
-  level_name = "participant_parameter",
-  mixed = FALSE
+  parameter_outcomes
 )
 
 E2_semantic_model_results <- bind_rows(
@@ -698,3 +750,690 @@ write.csv(
 cat("\nE2 semantic feature analysis complete.\n")
 cat("Saved fixed-effect coefficient table to e2_semantic_feature_model_coefficients_R.csv\n")
 
+
+
+# ==============================================================================
+# E2 Joint Semantic Feature Analysis: 9 behavioral outcomes x 2 model types
+# ==============================================================================
+# All 21 standardized semantic features are entered together. The additive model
+# estimates their mutually adjusted associations; the interaction model also
+# estimates a separate feature slope for Urban relative to Nature. Trial number
+# and the five participant-level model parameters are intentionally excluded.
+# No multiple-comparison correction is applied in this output.
+
+E2_joint_semantic_features <- c(
+  "sky", "grass", "plant", "water", "fence", "path", "river", "bench",
+  "pole", "building", "tree", "earth", "rock", "streetlight", "wall",
+  "signboard", "sidewalk", "railing", "road", "person", "mountain"
+)
+
+E2_joint_trial_outcomes <- tibble::tribble(
+  ~outcome,      ~family,     ~subset,
+  "Reward",      "gaussian",  "all",
+  "BestChoice",  "binomial",  "all",
+  "value_gap",   "gaussian",  "all",
+  "Switch",      "binomial",  "all",
+  "WinStay",     "binomial",  "all",
+  "LoseShift",   "binomial",  "all",
+  "exploration", "binomial",  "all",
+  "rank_2",      "binomial",  "exploration_only",
+  "EV_history",  "gaussian",  "exploration_only"
+)
+
+E2_joint_semantic_data <- read.csv(file.path("data", "E2_dm_switch.csv")) %>%
+  mutate(
+    Condition = factor(Condition, levels = c("Nature", "Urban", "Control"))
+  )
+
+E2_joint_z_features <- paste0(E2_joint_semantic_features, "_z")
+E2_joint_additive_rhs <- paste(
+  c(E2_joint_z_features, "Condition"),
+  collapse = " + "
+)
+E2_joint_interaction_rhs <- paste0(
+  "(", paste(E2_joint_z_features, collapse = " + "), ") * Condition"
+)
+
+E2_joint_output_file <- file.path(
+  "data",
+  "e2_joint_semantic_behavior_model_coefficients_R.csv"
+)
+
+E2_joint_results <- list()
+E2_joint_row_id <- 1
+
+for (outcome_i in seq_len(nrow(E2_joint_trial_outcomes))) {
+  outcome <- E2_joint_trial_outcomes$outcome[outcome_i]
+  family_name <- E2_joint_trial_outcomes$family[outcome_i]
+  subset_name <- E2_joint_trial_outcomes$subset[outcome_i]
+
+  model_data <- E2_joint_semantic_data
+  if (subset_name == "exploration_only") {
+    model_data <- model_data %>% filter(exploration == 1)
+  }
+
+  model_data <- model_data %>%
+    filter(
+      !is.na(.data[[outcome]]),
+      !is.na(Condition),
+      !is.na(Subnum),
+      if_all(all_of(E2_joint_semantic_features), ~ !is.na(.x))
+    ) %>%
+    mutate(
+      across(
+        all_of(E2_joint_semantic_features),
+        ~ as.numeric(scale(as.numeric(.x))),
+        .names = "{.col}_z"
+      ),
+      Condition = droplevels(Condition)
+    ) %>%
+    filter(if_all(all_of(E2_joint_z_features), ~ !is.na(.x)))
+
+  n_obs <- nrow(model_data)
+  n_subjects <- dplyr::n_distinct(model_data$Subnum)
+  n_images <- dplyr::n_distinct(model_data$image_name)
+
+  for (model_type in c("additive", "interaction")) {
+    rhs <- if (model_type == "interaction") {
+      E2_joint_interaction_rhs
+    } else {
+      E2_joint_additive_rhs
+    }
+    formula_text <- paste0(outcome, " ~ ", rhs, " + (1 | Subnum) + (1 | image_name)")
+    model_name <- ifelse(family_name == "binomial", "glmer", "lmer")
+    optimizer_name <- ifelse(family_name == "binomial", "bobyqa", "nloptwrap")
+    model_warnings <- character()
+
+    model <- tryCatch(
+      withCallingHandlers(
+        {
+          if (family_name == "binomial") {
+            glmer(
+              as.formula(formula_text),
+              data = model_data,
+              family = binomial,
+              nAGQ = 0,
+              control = glmerControl(
+                optimizer = "bobyqa",
+                optCtrl = list(maxfun = 200000)
+              )
+            )
+          } else {
+            lmer(as.formula(formula_text), data = model_data)
+          }
+        },
+        warning = function(w) {
+          model_warnings <<- c(model_warnings, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) e
+    )
+
+    if (inherits(model, "error")) {
+      E2_joint_results[[E2_joint_row_id]] <- tibble(
+        level = "trial",
+        outcome = outcome,
+        family = family_name,
+        subset = subset_name,
+        feature = "all_semantic_features",
+        model_type = model_type,
+        model = model_name,
+        formula = formula_text,
+        optimizer = optimizer_name,
+        nAGQ = ifelse(family_name == "binomial", 0, NA_real_),
+        n_obs = n_obs,
+        n_subjects = n_subjects,
+        n_images = n_images,
+        converged = FALSE,
+        singular = NA,
+        AIC = NA_real_,
+        BIC = NA_real_,
+        logLik = NA_real_,
+        deviance = NA_real_,
+        convergence_message = NA_character_,
+        warning = ifelse(
+          length(model_warnings) == 0,
+          NA_character_,
+          paste(unique(model_warnings), collapse = " | ")
+        ),
+        error = conditionMessage(model),
+        term = NA_character_
+      )
+    } else {
+      coefficient_table <- as.data.frame(coef(summary(model)))
+      coefficient_table$term <- rownames(coefficient_table)
+      rownames(coefficient_table) <- NULL
+
+      convergence_messages <- model@optinfo$conv$lme4$messages
+      converged <- is.null(convergence_messages)
+      model_singular <- lme4::isSingular(model, tol = 1e-4)
+      model_aic <- AIC(model)
+      model_bic <- BIC(model)
+      model_loglik <- as.numeric(logLik(model))
+      model_deviance <- if (family_name == "binomial") {
+        deviance(model)
+      } else {
+        lme4::REMLcrit(model)
+      }
+
+      E2_joint_results[[E2_joint_row_id]] <- bind_cols(
+        tibble(
+          level = "trial",
+          outcome = outcome,
+          family = family_name,
+          subset = subset_name,
+          feature = "all_semantic_features",
+          model_type = model_type,
+          model = model_name,
+          formula = formula_text,
+          optimizer = optimizer_name,
+          nAGQ = ifelse(family_name == "binomial", 0, NA_real_),
+          n_obs = n_obs,
+          n_subjects = n_subjects,
+          n_images = n_images,
+          converged = converged,
+          singular = model_singular,
+          AIC = model_aic,
+          BIC = model_bic,
+          logLik = model_loglik,
+          deviance = model_deviance,
+          convergence_message = ifelse(
+            converged,
+            NA_character_,
+            paste(convergence_messages, collapse = " | ")
+          ),
+          warning = ifelse(
+            length(model_warnings) == 0,
+            NA_character_,
+            paste(unique(model_warnings), collapse = " | ")
+          ),
+          error = NA_character_
+        ),
+        as_tibble(coefficient_table)
+      )
+    }
+
+    E2_joint_row_id <- E2_joint_row_id + 1
+
+    write.csv(
+      bind_rows(E2_joint_results),
+      E2_joint_output_file,
+      row.names = FALSE
+    )
+
+    cat(
+      sprintf(
+        "Completed E2 joint model %d/18: %s (%s)\n",
+        E2_joint_row_id - 1,
+        outcome,
+        model_type
+      )
+    )
+  }
+}
+
+cat("\nE2 joint semantic behavior analysis complete.\n")
+cat("Saved coefficient and model-detail table to ", E2_joint_output_file, "\n", sep = "")
+
+
+# ==============================================================================
+# E2 Joint Rating Analysis: 9 behavioral outcomes x 2 model types
+# ==============================================================================
+# All nine standardized image ratings are entered together. Ratings are complete
+# for Nature, Urban, and Control, so all three conditions are retained with Nature
+# as the reference level. Trial number and participant-level model parameters are
+# intentionally excluded. No multiple-comparison correction is applied here.
+
+E2_joint_rating_features <- c(
+  "naturalness", "disorderliness", "aesthetic", "familiarity",
+  "engagement", "fascination", "mystery", "imagability", "control"
+)
+
+E2_joint_rating_outcomes <- tibble::tribble(
+  ~outcome,      ~family,     ~subset,
+  "Reward",      "gaussian",  "all",
+  "BestChoice",  "binomial",  "all",
+  "value_gap",   "gaussian",  "all",
+  "Switch",      "binomial",  "all",
+  "WinStay",     "binomial",  "all",
+  "LoseShift",   "binomial",  "all",
+  "exploration", "binomial",  "all",
+  "rank_2",      "binomial",  "exploration_only",
+  "EV_history",  "gaussian",  "exploration_only"
+)
+
+E2_joint_rating_data <- read.csv(file.path("data", "E2_dm_switch.csv")) %>%
+  mutate(
+    Condition = factor(Condition, levels = c("Nature", "Urban", "Control"))
+  )
+
+E2_joint_z_ratings <- paste0(E2_joint_rating_features, "_z")
+E2_joint_rating_additive_rhs <- paste(
+  c(E2_joint_z_ratings, "Condition"),
+  collapse = " + "
+)
+E2_joint_rating_interaction_rhs <- paste0(
+  "(", paste(E2_joint_z_ratings, collapse = " + "), ") * Condition"
+)
+
+E2_joint_rating_output_file <- file.path(
+  "data",
+  "e2_joint_rating_behavior_model_coefficients_R.csv"
+)
+
+E2_joint_rating_results <- list()
+E2_joint_rating_row_id <- 1
+
+for (outcome_i in seq_len(nrow(E2_joint_rating_outcomes))) {
+  outcome <- E2_joint_rating_outcomes$outcome[outcome_i]
+  family_name <- E2_joint_rating_outcomes$family[outcome_i]
+  subset_name <- E2_joint_rating_outcomes$subset[outcome_i]
+
+  model_data <- E2_joint_rating_data
+  if (subset_name == "exploration_only") {
+    model_data <- model_data %>% filter(exploration == 1)
+  }
+
+  model_data <- model_data %>%
+    filter(
+      !is.na(.data[[outcome]]),
+      !is.na(Condition),
+      !is.na(Subnum),
+      if_all(all_of(E2_joint_rating_features), ~ !is.na(.x))
+    ) %>%
+    mutate(
+      across(
+        all_of(E2_joint_rating_features),
+        ~ as.numeric(scale(as.numeric(.x))),
+        .names = "{.col}_z"
+      ),
+      Condition = droplevels(Condition)
+    ) %>%
+    filter(if_all(all_of(E2_joint_z_ratings), ~ !is.na(.x)))
+
+  n_obs <- nrow(model_data)
+  n_subjects <- dplyr::n_distinct(model_data$Subnum)
+  n_images <- dplyr::n_distinct(model_data$image_name)
+
+  for (model_type in c("additive", "interaction")) {
+    rhs <- if (model_type == "interaction") {
+      E2_joint_rating_interaction_rhs
+    } else {
+      E2_joint_rating_additive_rhs
+    }
+    formula_text <- paste0(outcome, " ~ ", rhs, " + (1 | Subnum) + (1 | image_name)")
+    model_name <- ifelse(family_name == "binomial", "glmer", "lmer")
+    optimizer_name <- ifelse(family_name == "binomial", "bobyqa", "nloptwrap")
+    model_warnings <- character()
+
+    model <- tryCatch(
+      withCallingHandlers(
+        {
+          if (family_name == "binomial") {
+            glmer(
+              as.formula(formula_text),
+              data = model_data,
+              family = binomial,
+              nAGQ = 0,
+              control = glmerControl(
+                optimizer = "bobyqa",
+                optCtrl = list(maxfun = 200000)
+              )
+            )
+          } else {
+            lmer(as.formula(formula_text), data = model_data)
+          }
+        },
+        warning = function(w) {
+          model_warnings <<- c(model_warnings, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) e
+    )
+
+    if (inherits(model, "error")) {
+      E2_joint_rating_results[[E2_joint_rating_row_id]] <- tibble(
+        level = "trial",
+        outcome = outcome,
+        family = family_name,
+        subset = subset_name,
+        feature = "all_ratings",
+        model_type = model_type,
+        model = model_name,
+        formula = formula_text,
+        optimizer = optimizer_name,
+        nAGQ = ifelse(family_name == "binomial", 0, NA_real_),
+        n_obs = n_obs,
+        n_subjects = n_subjects,
+        n_images = n_images,
+        converged = FALSE,
+        singular = NA,
+        AIC = NA_real_,
+        BIC = NA_real_,
+        logLik = NA_real_,
+        deviance = NA_real_,
+        convergence_message = NA_character_,
+        warning = ifelse(
+          length(model_warnings) == 0,
+          NA_character_,
+          paste(unique(model_warnings), collapse = " | ")
+        ),
+        error = conditionMessage(model),
+        term = NA_character_
+      )
+    } else {
+      coefficient_table <- as.data.frame(coef(summary(model)))
+      coefficient_table$term <- rownames(coefficient_table)
+      rownames(coefficient_table) <- NULL
+
+      convergence_messages <- model@optinfo$conv$lme4$messages
+      converged <- is.null(convergence_messages)
+      model_singular <- lme4::isSingular(model, tol = 1e-4)
+      model_aic <- AIC(model)
+      model_bic <- BIC(model)
+      model_loglik <- as.numeric(logLik(model))
+      model_deviance <- if (family_name == "binomial") {
+        deviance(model)
+      } else {
+        lme4::REMLcrit(model)
+      }
+
+      E2_joint_rating_results[[E2_joint_rating_row_id]] <- bind_cols(
+        tibble(
+          level = "trial",
+          outcome = outcome,
+          family = family_name,
+          subset = subset_name,
+          feature = "all_ratings",
+          model_type = model_type,
+          model = model_name,
+          formula = formula_text,
+          optimizer = optimizer_name,
+          nAGQ = ifelse(family_name == "binomial", 0, NA_real_),
+          n_obs = n_obs,
+          n_subjects = n_subjects,
+          n_images = n_images,
+          converged = converged,
+          singular = model_singular,
+          AIC = model_aic,
+          BIC = model_bic,
+          logLik = model_loglik,
+          deviance = model_deviance,
+          convergence_message = ifelse(
+            converged,
+            NA_character_,
+            paste(convergence_messages, collapse = " | ")
+          ),
+          warning = ifelse(
+            length(model_warnings) == 0,
+            NA_character_,
+            paste(unique(model_warnings), collapse = " | ")
+          ),
+          error = NA_character_
+        ),
+        as_tibble(coefficient_table)
+      )
+    }
+
+    E2_joint_rating_row_id <- E2_joint_rating_row_id + 1
+
+    write.csv(
+      bind_rows(E2_joint_rating_results),
+      E2_joint_rating_output_file,
+      row.names = FALSE
+    )
+
+    cat(
+      sprintf(
+        "Completed E2 joint rating model %d/18: %s (%s)\n",
+        E2_joint_rating_row_id - 1,
+        outcome,
+        model_type
+      )
+    )
+  }
+}
+
+cat("\nE2 joint rating behavior analysis complete.\n")
+cat(
+  "Saved coefficient and model-detail table to ",
+  E2_joint_rating_output_file,
+  "\n",
+  sep = ""
+)
+
+
+# ==============================================================================
+# E1 Trial-wise Semantic Feature Analysis of Image Ratings
+# ==============================================================================
+# Nine trial-wise ratings are predicted from all 21 standardized semantic
+# features. Additive and feature-by-Condition interaction models include crossed
+# participant and image random intercepts. Control trials are excluded by
+# complete-case filtering because their semantic features are unavailable.
+# No multiple-comparison correction is applied in this output.
+
+E1_trial_rating_semantic_features <- c(
+  "sky", "grass", "plant", "water", "fence", "path", "river", "bench",
+  "pole", "building", "tree", "earth", "rock", "streetlight", "wall",
+  "signboard", "sidewalk", "railing", "road", "person", "mountain"
+)
+
+E1_trial_rating_outcomes <- c(
+  "naturalness", "disorderliness", "aesthetic", "familiarity",
+  "engagement", "fascination", "mystery", "imagability", "control"
+)
+
+E1_trial_rating_data <- read.csv(file.path("data", "E1_img_data.csv")) %>%
+  mutate(
+    Condition = factor(Condition, levels = c("Nature", "Urban", "Control"))
+  )
+
+E1_trial_rating_z_features <- paste0(
+  E1_trial_rating_semantic_features,
+  "_z"
+)
+E1_trial_rating_additive_rhs <- paste(
+  c(E1_trial_rating_z_features, "Condition"),
+  collapse = " + "
+)
+E1_trial_rating_interaction_rhs <- paste0(
+  "(",
+  paste(E1_trial_rating_z_features, collapse = " + "),
+  ") * Condition"
+)
+
+E1_trial_rating_output_file <- file.path(
+  "data",
+  "e1_trialwise_semantic_rating_model_coefficients_R.csv"
+)
+
+E1_trial_rating_results <- list()
+E1_trial_rating_row_id <- 1
+
+for (outcome in E1_trial_rating_outcomes) {
+  model_data <- E1_trial_rating_data %>%
+    filter(
+      !is.na(.data[[outcome]]),
+      !is.na(Condition),
+      !is.na(Subnum),
+      !is.na(image_name),
+      if_all(
+        all_of(E1_trial_rating_semantic_features),
+        ~ !is.na(.x)
+      )
+    ) %>%
+    mutate(
+      across(
+        all_of(E1_trial_rating_semantic_features),
+        ~ as.numeric(scale(as.numeric(.x))),
+        .names = "{.col}_z"
+      ),
+      Condition = droplevels(Condition)
+    ) %>%
+    filter(
+      if_all(
+        all_of(E1_trial_rating_z_features),
+        ~ !is.na(.x)
+      )
+    )
+
+  n_obs <- nrow(model_data)
+  n_subjects <- dplyr::n_distinct(model_data$Subnum)
+  n_images <- dplyr::n_distinct(model_data$image_name)
+
+  for (model_type in c("additive", "interaction")) {
+    rhs <- if (model_type == "interaction") {
+      E1_trial_rating_interaction_rhs
+    } else {
+      E1_trial_rating_additive_rhs
+    }
+
+    formula_text <- paste0(
+      outcome,
+      " ~ ",
+      rhs,
+      " + (1 | Subnum) + (1 | image_name)"
+    )
+    model_warnings <- character()
+
+    model <- tryCatch(
+      withCallingHandlers(
+        lmer(
+          as.formula(formula_text),
+          data = model_data
+        ),
+        warning = function(w) {
+          model_warnings <<- c(
+            model_warnings,
+            conditionMessage(w)
+          )
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) e
+    )
+
+    if (inherits(model, "error")) {
+      E1_trial_rating_results[[E1_trial_rating_row_id]] <- tibble(
+        level = "trial_rating",
+        outcome = outcome,
+        family = "gaussian",
+        subset = "all",
+        feature = "all_semantic_features",
+        model_type = model_type,
+        model = "lmer",
+        formula = formula_text,
+        optimizer = "nloptwrap",
+        nAGQ = NA_real_,
+        n_obs = n_obs,
+        n_subjects = n_subjects,
+        n_images = n_images,
+        converged = FALSE,
+        singular = NA,
+        AIC = NA_real_,
+        BIC = NA_real_,
+        logLik = NA_real_,
+        deviance = NA_real_,
+        convergence_message = NA_character_,
+        warning = ifelse(
+          length(model_warnings) == 0,
+          NA_character_,
+          paste(
+            unique(model_warnings),
+            collapse = " | "
+          )
+        ),
+        error = conditionMessage(model),
+        term = NA_character_
+      )
+    } else {
+      coefficient_table <- as.data.frame(
+        coef(summary(model))
+      )
+      coefficient_table$term <- rownames(
+        coefficient_table
+      )
+      rownames(coefficient_table) <- NULL
+
+      convergence_messages <- model@optinfo$conv$lme4$messages
+      converged <- is.null(convergence_messages)
+      model_singular <- lme4::isSingular(
+        model,
+        tol = 1e-4
+      )
+      model_aic <- AIC(model)
+      model_bic <- BIC(model)
+      model_loglik <- as.numeric(logLik(model))
+      model_deviance <- lme4::REMLcrit(model)
+
+      E1_trial_rating_results[[E1_trial_rating_row_id]] <- bind_cols(
+        tibble(
+          level = "trial_rating",
+          outcome = outcome,
+          family = "gaussian",
+          subset = "all",
+          feature = "all_semantic_features",
+          model_type = model_type,
+          model = "lmer",
+          formula = formula_text,
+          optimizer = "nloptwrap",
+          nAGQ = NA_real_,
+          n_obs = n_obs,
+          n_subjects = n_subjects,
+          n_images = n_images,
+          converged = converged,
+          singular = model_singular,
+          AIC = model_aic,
+          BIC = model_bic,
+          logLik = model_loglik,
+          deviance = model_deviance,
+          convergence_message = ifelse(
+            converged,
+            NA_character_,
+            paste(
+              convergence_messages,
+              collapse = " | "
+            )
+          ),
+          warning = ifelse(
+            length(model_warnings) == 0,
+            NA_character_,
+            paste(
+              unique(model_warnings),
+              collapse = " | "
+            )
+          ),
+          error = NA_character_
+        ),
+        as_tibble(coefficient_table)
+      )
+    }
+
+    E1_trial_rating_row_id <- E1_trial_rating_row_id + 1
+
+    write.csv(
+      bind_rows(E1_trial_rating_results),
+      E1_trial_rating_output_file,
+      row.names = FALSE
+    )
+
+    cat(
+      sprintf(
+        "Completed E1 trial-wise rating model %d/18: %s (%s)\n",
+        E1_trial_rating_row_id - 1,
+        outcome,
+        model_type
+      )
+    )
+  }
+}
+
+cat("\nE1 trial-wise semantic rating analysis complete.\n")
+cat(
+  "Saved coefficient and model-detail table to ",
+  E1_trial_rating_output_file,
+  "\n",
+  sep = ""
+)
