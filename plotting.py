@@ -56,6 +56,8 @@ model_parameter_labels = {
     'decay_center': 'Decay Center',
 }
 model_parameter_docx_path = './data/E1_best_fitting_model_parameter_table.docx'
+model_comparison_csv_path = './data/model_comparison_results.csv'
+model_comparison_docx_path = './data/model_comparison_table.docx'
 
 
 def _word_escape(value):
@@ -96,21 +98,25 @@ def _word_paragraph(text, style=None, size=22, bold=False, color='000000',
     )
 
 
-def _word_table_cell(text, width, header=False, align='center'):
+def _word_table_cell(text, width, header=False, highlighted=False, align='center'):
     text_size = 17 if header else 18
+    fill = 'E8EEF5' if header else ('F2F4F7' if highlighted else None)
+    shading = f'<w:shd w:fill="{fill}"/>' if fill else ''
     return (
         '<w:tc>'
         '<w:tcPr>'
         f'<w:tcW w:w="{width}" w:type="dxa"/>'
         '<w:vAlign w:val="center"/>'
+        f'{shading}'
         '</w:tcPr>'
-        f'{_word_paragraph(text, size=text_size, bold=header, before=0, after=0, line=240, align=align)}'
+        f'{_word_paragraph(text, size=text_size, bold=header or highlighted, before=0, after=0, line=240, align=align)}'
         '</w:tc>'
     )
 
 
-def _word_table(rows, widths):
+def _word_table(rows, widths, highlight_rows=None):
     table_width = sum(widths)
+    highlight_rows = set() if highlight_rows is None else set(highlight_rows)
     border = '<w:top w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
     border += '<w:left w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
     border += '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="808080"/>'
@@ -139,11 +145,15 @@ def _word_table(rows, widths):
 
     for row_idx, row in enumerate(rows):
         header = row_idx == 0
+        highlighted = row_idx in highlight_rows
         cells = []
         for col_idx, cell_value in enumerate(row):
             align = 'left' if col_idx == 0 and not header else 'center'
-            cells.append(_word_table_cell(cell_value, widths[col_idx], header=header, align=align))
-        table.append(f'<w:tr>{"".join(cells)}</w:tr>')
+            cells.append(_word_table_cell(
+                cell_value, widths[col_idx], header=header, highlighted=highlighted, align=align
+            ))
+        row_properties = '<w:trPr><w:tblHeader w:val="true"/></w:trPr>' if header else ''
+        table.append(f'<w:tr>{row_properties}{"".join(cells)}</w:tr>')
 
     table.append('</w:tbl>')
     return ''.join(table)
@@ -162,14 +172,14 @@ def _word_styles_xml():
     </w:rPrDefault>
     <w:pPrDefault>
       <w:pPr>
-        <w:spacing w:after="120" w:line="300" w:lineRule="auto"/>
+        <w:spacing w:before="0" w:after="120" w:line="300" w:lineRule="auto"/>
       </w:pPr>
     </w:pPrDefault>
   </w:docDefaults>
   <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
     <w:name w:val="Normal"/>
     <w:qFormat/>
-    <w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr>
+    <w:pPr><w:spacing w:before="0" w:after="120" w:line="300" w:lineRule="auto"/></w:pPr>
     <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading1">
@@ -178,7 +188,7 @@ def _word_styles_xml():
     <w:next w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:spacing w:before="360" w:after="200" w:line="300" w:lineRule="auto"/></w:pPr>
-    <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:b/><w:color w:val="000000"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr>
+    <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:b/><w:color w:val="2E74B5"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading2">
     <w:name w:val="heading 2"/>
@@ -186,7 +196,7 @@ def _word_styles_xml():
     <w:next w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:spacing w:before="280" w:after="140" w:line="300" w:lineRule="auto"/></w:pPr>
-    <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:b/><w:color w:val="000000"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>
+    <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:b/><w:color w:val="2E74B5"/><w:sz w:val="26"/><w:szCs w:val="26"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading3">
     <w:name w:val="heading 3"/>
@@ -194,7 +204,7 @@ def _word_styles_xml():
     <w:next w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:spacing w:before="200" w:after="100" w:line="300" w:lineRule="auto"/></w:pPr>
-    <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:b/><w:color w:val="000000"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
+    <w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:b/><w:color w:val="1F4D78"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>
   </w:style>
 </w:styles>'''
 
@@ -328,6 +338,186 @@ def _write_model_parameter_docx(model_param_table, output_path):
         docx.writestr('docProps/core.xml', core_props)
         docx.writestr('docProps/app.xml', app_props)
 
+
+# ======================================================================================================================
+# Model comparison table
+# ======================================================================================================================
+def _write_model_comparison_docx(model_comparison, output_path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    comparison_set_order = ['E1 Task 1', 'E1 Task 2', 'E2']
+    model_order = [
+        'delta', 'delta_PVL_relative', 'delta_asymmetric', 'decay', 'decay_PVL_relative',
+        'decay_PVPE', 'decay_win', 'WSLS_avg', 'WSLS_delta', 'kalman_filter',
+        'kalman_decay', 'kalman_filter_bonus', 'kalman_decay_bonus'
+    ]
+    model_display_labels = {
+        'delta': 'Delta',
+        'kalman_decay': 'kalman_filter_decay'
+    }
+    table_header = [
+        'Model', 'Mean BIC', 'N Best Fit', 'BIC Weight', 'Bayes Factor',
+        'VBMS Alpha', 'Model Frequency', 'Exceedance Probability'
+    ]
+    table_widths = [2232, 1296, 1080, 1296, 1872, 1296, 1656, 2232]
+    body = [
+        _word_paragraph(
+            'Computational Model Comparison', style='Heading1', size=32, bold=True,
+            color='2E74B5', before=360, after=200, line=300
+        ),
+        _word_paragraph(
+            'Thirteen candidate models compared separately for E1 Task 1, E1 Task 2, and E2. '
+            'Excluded a priori: decay_PVL, delta_PVL, kalman_simple, and dual_process.',
+            size=22, before=0, after=120, line=300
+        )
+    ]
+
+    for comparison_index, comparison_set in enumerate(comparison_set_order):
+        if comparison_index > 0:
+            body.append('<w:p><w:r><w:br w:type="page"/></w:r></w:p>')
+
+        set_data = model_comparison[model_comparison['Comparison Set'] == comparison_set].copy()
+        if len(set_data) != 13:
+            raise ValueError(f'{comparison_set} must contain exactly 13 model-comparison rows.')
+        set_data['Model'] = pd.Categorical(set_data['Model'], categories=model_order, ordered=True)
+        set_data = set_data.sort_values('Model')
+        participant_count = int(set_data['N Participants'].iloc[0])
+        best_model = set_data['Best Model'].iloc[0]
+
+        body.append(
+            _word_paragraph(
+                f'{comparison_set} (N = {participant_count})', style='Heading2', size=26,
+                bold=True, color='2E74B5', before=280, after=140, line=300
+            )
+        )
+
+        rows = [table_header]
+        for _, result in set_data.iterrows():
+            bayes_factor_value = result['Bayes Factor']
+            if bayes_factor_value > 1000:
+                exponent = int(np.floor(np.log10(bayes_factor_value)))
+                coefficient = bayes_factor_value / (10 ** exponent)
+                bayes_factor_text = f'{coefficient:.2f} x 10^{exponent}'
+            else:
+                bayes_factor_text = f'{bayes_factor_value:.2f}'
+            rows.append([
+                model_display_labels.get(result['Model'], result['Model']),
+                f"{result['Mean BIC']:.2f}",
+                str(int(result['N Best Fit'])),
+                f"{result['BIC Weight']:.3f}",
+                bayes_factor_text,
+                f"{result['VBMS Alpha']:.3f}",
+                f"{result['VBMS Model Frequency']:.3f}",
+                f"{result['VBMS Exceedance Probability']:.3f}"
+            ])
+
+        highlight_rows = [
+            row_index + 1
+            for row_index, model in enumerate(set_data['Model'])
+            if model == best_model
+        ]
+        body.append(_word_table(rows, table_widths, highlight_rows=highlight_rows))
+        body.append(
+            _word_paragraph(
+                'Note. Lower BIC is better. Bayes factor is winner / row model (1.00 for the winner). '
+                'BIC weights use mean BIC. VBMS uses log evidence approximated as -BIC / 2. '
+                'The shaded row has the lowest mean BIC.',
+                size=16, color='555555', before=80, after=80, line=240
+            )
+        )
+
+    section_props = (
+        '<w:sectPr>'
+        '<w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>'
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" '
+        'w:header="708" w:footer="708" w:gutter="0"/>'
+        '<w:cols w:space="720"/>'
+        '<w:docGrid w:linePitch="360"/>'
+        '</w:sectPr>'
+    )
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" '
+        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+        'xmlns:o="urn:schemas-microsoft-com:office:office" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" '
+        'xmlns:v="urn:schemas-microsoft-com:vml" '
+        'xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:w10="urn:schemas-microsoft-com:office:word" '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" '
+        'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" '
+        'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" '
+        'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" '
+        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+        'mc:Ignorable="w14 wp14">'
+        f'<w:body>{"".join(body)}{section_props}</w:body>'
+        '</w:document>'
+    )
+
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>'''
+    package_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>'''
+    core_props = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:dcterms="http://purl.org/dc/terms/"
+  xmlns:dcmitype="http://purl.org/dc/dcmitype/"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>Computational Model Comparison</dc:title>
+  <dc:creator>NatureDM</dc:creator>
+  <cp:lastModifiedBy>NatureDM</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified>
+</cp:coreProperties>'''
+    app_props = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+  xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Microsoft Word</Application>
+  <DocSecurity>0</DocSecurity>
+  <ScaleCrop>false</ScaleCrop>
+  <Company></Company>
+  <LinksUpToDate>false</LinksUpToDate>
+  <SharedDoc>false</SharedDoc>
+  <HyperlinksChanged>false</HyperlinksChanged>
+  <AppVersion>16.0000</AppVersion>
+</Properties>'''
+
+    with ZipFile(output_path, 'w', ZIP_DEFLATED) as docx:
+        docx.writestr('[Content_Types].xml', content_types)
+        docx.writestr('_rels/.rels', package_rels)
+        docx.writestr('word/document.xml', document_xml)
+        docx.writestr('word/styles.xml', _word_styles_xml())
+        docx.writestr('docProps/core.xml', core_props)
+        docx.writestr('docProps/app.xml', app_props)
+
+
+model_comparison = pd.read_csv(model_comparison_csv_path)
+try:
+    _write_model_comparison_docx(model_comparison, model_comparison_docx_path)
+except PermissionError:
+    comparison_docx_path = Path(model_comparison_docx_path)
+    fallback_comparison_path = comparison_docx_path.with_name(
+        f'{comparison_docx_path.stem}_updated{comparison_docx_path.suffix}'
+    )
+    _write_model_comparison_docx(model_comparison, fallback_comparison_path)
+    print(f'Could not overwrite {model_comparison_docx_path}; wrote {fallback_comparison_path} instead.')
 
 def apply_e1_plot_style(ax, ylabel):
     plt.xlabel('')
@@ -896,6 +1086,76 @@ plt.tight_layout()
 plt.savefig('./figures/E1_Reward_by_Exploration_Status_Task_Condition.png', dpi=600)
 plt.close()
 
+reward_strategy_summary_E2 = (
+    E2_dm_switch.dropna(subset=['exploration'])
+    .groupby(['Subnum', 'Condition', 'Task', 'exploration'], observed=False)['Reward']
+    .mean()
+    .dropna()
+    .reset_index()
+)
+reward_strategy_summary_E2['Condition'] = pd.Categorical(
+    reward_strategy_summary_E2['Condition'],
+    categories=condition_order,
+    ordered=True,
+)
+reward_strategy_summary_E2['Strategy'] = reward_strategy_summary_E2['exploration'].map({
+    0: 'Exploitation',
+    1: 'Exploration',
+})
+reward_strategy_summary_E2['Strategy'] = pd.Categorical(
+    reward_strategy_summary_E2['Strategy'],
+    categories=strategy_order,
+    ordered=True,
+)
+
+fig, ax = plt.subplots(figsize=(4.5, 6.5))
+x_positions = {condition: idx for idx, condition in enumerate(condition_order)}
+strategy_offsets = {'Exploitation': -0.16, 'Exploration': 0.16}
+
+task_summary = (
+    reward_strategy_summary_E2.groupby(['Condition', 'Strategy'], observed=True)['Reward']
+    .agg(['mean', 'sem'])
+    .reset_index()
+)
+task_summary['se'] = task_summary['sem'].fillna(0)
+
+for _, row in task_summary.iterrows():
+    condition = row['Condition']
+    strategy = row['Strategy']
+    x = x_positions[condition] + strategy_offsets[strategy]
+    ax.errorbar(
+        x,
+        row['mean'],
+        yerr=row['se'],
+        fmt='o',
+        markersize=12,
+        color='black',
+        ecolor='black',
+        elinewidth=2.5,
+        capsize=5,
+        markerfacecolor=strategy_palette[strategy],
+        markeredgecolor='black',
+        markeredgewidth=2,
+    )
+
+ax.axhline(50, color='gray', linestyle='--', linewidth=1.8)
+ax.set_title(f'E2', fontproperties=prop, fontsize=24)
+ax.set_xticks(np.arange(len(condition_order)))
+ax.set_xticklabels(condition_order)
+ax.set_xlim(-0.5, len(condition_order) - 0.5)
+ax.set_xlabel('')
+ax.set_ylabel('Reward', fontproperties=prop, fontsize=22)
+for lbl in ax.get_xticklabels() + ax.get_yticklabels():
+    lbl.set_fontproperties(prop)
+    lbl.set_fontsize(18)
+ax.spines['left'].set_linewidth(1.6)
+ax.spines['bottom'].set_linewidth(1.6)
+ax.tick_params(axis='both', width=1.6, length=6)
+sns.despine(ax=ax)
+fig.tight_layout()
+fig.savefig('./figures/E2_Reward_by_Exploration_Status_Task_Condition.png', dpi=600)
+plt.close(fig)
+
 # ======================================================================================================================
 # Best-fitting model parameter table
 # ======================================================================================================================
@@ -1079,13 +1339,13 @@ e1_additive_sig['p_marker_size'] = np.select(
 feature_order = ['road', 'fence', 'grass', 'mountain']
 rating_order = ['aesthetic', 'familiarity', 'engagement', 'fascination', 'mystery', 'imagability', 'control']
 rating_labels = {
-    'aesthetic': 'Aesthetic',
-    'familiarity': 'Familiarity',
-    'engagement': 'Engagement',
-    'fascination': 'Fascination',
-    'mystery': 'Mystery',
-    'imagability': 'Imageability',
-    'control': 'Control',
+    'aesthetic': 'liking',
+    'familiarity': 'familiarity',
+    'engagement': 'engagement',
+    'fascination': 'fascination',
+    'mystery': 'mystery',
+    'imagability': 'imaginability',
+    'control': 'control',
 }
 x_positions = {rating: index for index, rating in enumerate(rating_order)}
 y_positions = {feature: len(feature_order) - index - 1 for index, feature in enumerate(feature_order)}

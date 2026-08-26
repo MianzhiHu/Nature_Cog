@@ -33,9 +33,27 @@ print(f'The number of participants: {E1_dm_data.groupby('Condition', observed=Fa
 img_count = E1_img_data['image_name'].value_counts().reset_index()
 
 # Demographic information
-E1_dm_data_sex = E1_dm_data.groupby('Subnum')['Age'].first().reset_index()
-E1_dm_data_sex['Age'] = pd.to_numeric(E1_dm_data_sex['Age'], errors='coerce')
-print(E1_dm_data_sex['Age'].mean())
+E1_demo = E1_dm_data.groupby('Subnum')['Gender'].first().reset_index()
+print(E1_demo['Gender'].value_counts())
+E1_demo['Age'] = E1_dm_data.groupby('Subnum')['Age'].first().reset_index()['Age']
+E1_demo['Age'] = pd.to_numeric(E1_demo['Age'], errors='coerce')
+print(E1_demo['Age'].describe())
+E1_demo['Ethnicity'] = E1_dm_data.groupby('Subnum')['Ethnicity'].first().reset_index()['Ethnicity']
+print(E1_demo['Ethnicity'].value_counts())
+E1_demo['Race'] = E1_dm_data.groupby('Subnum')['Race'].first().reset_index()['Race']
+print(E1_demo['Race'].value_counts())
+
+E2_demo = E2_data.groupby('Subnum')['Gender'].first().reset_index()
+print(E2_demo['Gender'].value_counts())
+E2_demo['Age'] = E2_data.groupby('Subnum')['Age'].first().reset_index()['Age']
+E2_demo['Age'] = pd.to_numeric(E2_demo['Age'], errors='coerce')
+print(E2_demo['Age'].describe())
+E2_demo['Ethnicity'] = E2_data.groupby('Subnum')['Ethnicity'].first().reset_index()['Ethnicity']
+print(E2_demo['Ethnicity'].value_counts())
+E2_demo['Race'] = E2_data.groupby('Subnum')['Race'].first().reset_index()['Race']
+print(E2_demo['Race'].value_counts())
+E2_demo['Condition'] = E2_data.groupby('Subnum')['Condition'].first().reset_index()['Condition']
+print(E2_demo['Condition'].value_counts())
 
 # ======================================================================================================================
 # E1 Analysis

@@ -18,6 +18,7 @@ from utils.PLS_Reader import plot_predictor_results, plot_outcome_results
 result_dir = os.path.abspath('C:/Users/User/OneDrive/Desktop/胡勉之/Texas A&M University/PLS/Result/Nature_Cog/')
 ori_data = pd.read_csv('./data/PLS_Data/PLS_Sem_E1.csv')
 sys.path.append(result_dir)
+ratings_label = ['naturalness', 'orderliness', 'liking', 'familiarity', 'engagement', 'fascination', 'mystery', 'imaginability', 'control']
 
 def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05, LV=1,
                     anchor_variable=None):
@@ -93,12 +94,12 @@ def get_pls_results(lv_path, boot_ratio_path, var_names, method='fdr_bh', p=.05,
 #                                         'PLS_behav~ratings.mat',
 #                                         ratings, method='fdr_bh', p=.05)
 #
-model_ratings_results = get_pls_results('PLS_model~ratings_lv_vals.mat',
+model_ratings_results_E1 = get_pls_results('PLS_model~ratings_lv_vals.mat',
                                         'PLS_model~ratings.mat',
-                                        ratings, method='fdr_bh', p=.05)
-model_ratings_results = get_pls_results('PLS_model~ratingsE2_lv_vals.mat',
+                                        ratings_label, method='fdr_bh', p=.05)
+model_ratings_results_E2 = get_pls_results('PLS_model~ratingsE2_lv_vals.mat',
                                         'PLS_model~ratingsE2.mat',
-                                        ratings, method='fdr_bh', p=.05)
+                                        ratings_label, method='fdr_bh', p=.05)
 #
 #
 # model_visual_results = get_pls_results('PLS_model~visual_lv_vals.mat',
@@ -106,19 +107,15 @@ model_ratings_results = get_pls_results('PLS_model~ratingsE2_lv_vals.mat',
 #                                         low_visual_features, method='fdr_bh', p=.05)
 #
 #
-model_semantic_results = get_pls_results('PLS_model~semantic_lv_vals.mat',
+model_semantic_results_E1 = get_pls_results('PLS_model~semantic_lv_vals.mat',
                                         'PLS_model~semantic.mat',
                                         semantic_visual_features, method='fdr_bh', p=.05)
 
-model_semantic_results = get_pls_results('PLS_model~semanticE2_lv_vals.mat',
+model_semantic_results_E2 = get_pls_results('PLS_model~semanticE2_lv_vals.mat',
                                         'PLS_model~semanticE2.mat',
                                         semantic_visual_features, method='fdr_bh', p=.05)
 
 
-modelparam_semantic_results = get_pls_results('PLS_modelparam~semanticE2_lv_vals.mat',
-                                        'PLS_modelparam~semanticE2.mat',
-                                        semantic_visual_features, method='fdr_bh', p=.05)
-#
 # behav_semantic_results = get_pls_results('PLS_behav~semantic_lv_vals.mat',
 #                                         'PLS_behav~semantic.mat',
 #                                         semantic_visual_features, method='fdr_bh', p=.05)
@@ -127,8 +124,8 @@ modelparam_semantic_results = get_pls_results('PLS_modelparam~semanticE2_lv_vals
 #                                         'PLS_behav~semanticpc.mat',
 #                                         semantic_pc_features, method='fdr_bh', p=.05)
 #
-ratings_semantic_results = get_pls_results('PLS_ratings~semantics_lv_vals.mat',
-                                        'PLS_ratings~semantics.mat',
+ratings_semantic_results = get_pls_results('PLS_ratings~semantic_lv_vals.mat',
+                                        'PLS_ratings~semantic.mat',
                                         semantic_visual_features, method='fdr_bh', p=.05)
 #
 #
@@ -155,25 +152,31 @@ ratings_semantic_results = get_pls_results('PLS_ratings~semantics_lv_vals.mat',
 model_param_names = ['Reward', 'Optimal Choice', 'Best-Chosen Value', 'Switch', 'Win-Stay', 'Lose-Shift',
                      'Inverse Temperature', 'Reward Variance', 'Noise Variance', 'Decay Rate', 'Decay Center',
                      'Exploration', 'Second-Best Choice', 'EV Chosen']
-model_semantic_fig = plot_predictor_results(model_semantic_results, only_sig=False, save_path='./figures/PLS_Model_Semantic_Significant_Results.png')
-model_ratings_fig = plot_predictor_results(model_ratings_results, only_sig=False,
+model_semantic_fig_E1 = plot_predictor_results(model_semantic_results_E1, only_sig=False,
+                                            save_path='./figures/PLS_Model_Semantic_Significant_Results.png')
+model_semantic_fig_E2 = plot_predictor_results(model_semantic_results_E2, only_sig=False,
+                                            save_path='./figures/PLS_Model_Semantic_Significant_ResultsE2.png')
+model_ratings_fig_E1 = plot_predictor_results(model_ratings_results_E1, only_sig=False, ylabel='LV Loadings',
                                            save_path='./figures/PLS_Model_Ratings_Significant_Results.png')
-model_ratingsE2_fig = plot_predictor_results(model_ratings_results, only_sig=False,
+model_ratings_fig_E2 = plot_predictor_results(model_ratings_results_E2, only_sig=False,
                                            save_path='./figures/PLS_Model_RatingsE2_Significant_Results.png')
-ratings_semantic_fig = plot_predictor_results(ratings_semantic_results, only_sig=False, ylabel='Subjective Rating Loadings',
+ratings_semantic_fig = plot_predictor_results(ratings_semantic_results, only_sig=False, ylabel='LV Loadings',
                                               reverse_sign=True, save_path='./figures/PLS_Ratings_Semantic_Significant_Results.png')
 
 
 
+plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~semantic.mat', method=3, ylabel='Correlation with LV',
+                         conditions=['Nature', 'Urban'], LV_Vis=1, BehavLabels=model_param_names,
+                         title=False, save_path='./figures/model~semanticE1')
 plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~semanticE2.mat', method=3, ylabel='Correlation with LV',
                          conditions=['Nature', 'Urban'], LV_Vis=1, BehavLabels=model_param_names,
-                         title=False, save_path='./figures/')
+                         title=False, save_path='./figures/model~semanticE2')
 plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~ratings.mat', method=3, ylabel='Correlation with LV',
                      conditions=['Nature', 'Urban'], LV_Vis=1, BehavLabels=model_param_names,
-                     title=False, save_path='./figures/model~ratings')
+                     title=False, save_path='./figures/model~ratingsE1.png')
 plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_model~ratingsE2.mat', method=3, ylabel='Correlation with LV',
                      conditions=['Nature', 'Urban'], LV_Vis=1, BehavLabels=model_param_names,
-                     title=False, save_path='./figures/model~ratingsE2')
-plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_ratings~semantics.mat', method=3, ylabel='Correlation with LV',
-                     conditions=['Nature'], LV_Vis=1, BehavLabels=ratings, reverse_sign=True,
-                     title=False, save_path='./figures/ratings~semantics')
+                     title=False, save_path='./figures/model~ratingsE2.png')
+plot_outcome_results(result_dir=result_dir, boot_ratio_path='PLS_ratings~semantic.mat', method=3, ylabel='Correlation with LV',
+                     conditions=['Combined Image Pool'], LV_Vis=1, BehavLabels=ratings_label, reverse_sign=True,
+                     title=False, save_path='./figures/ratings~semantic.png')

@@ -4,9 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pingouin as pg
-import ruptures as rpt
-from utils.ComputationalModeling import (ComputationalModels, dict_generator, moving_window_model_fitting,
-                                         parameter_extractor, vb_model_selection, behavioral_moving_window, parse_numeric_history)
+from utils.ComputationalModeling import (BIC_weights, ComputationalModels, bayes_factor,
+                                         behavioral_moving_window, compute_exceedance_prob, dict_generator,
+                                         moving_window_model_fitting, parameter_extractor, parse_numeric_history,
+                                         vb_model_selection)
 import functools
 import ast
 from matplotlib import font_manager as fm
@@ -169,12 +170,60 @@ if __name__== '__main__':
 
     # Create a df from model fitting results containing all models
     all_model_results = pd.concat(model_fitting_results).reset_index(level=0)
-    # task_1_results = all_model_results[all_model_results['Task'] == 'E2'].copy()
-    # task_1_wide = task_1_results.pivot(index='Subnum', columns='Model', values='BIC')
-    # log_evidences = task_1_wide.values / (-2)
-    # alpha_est, g_est = vb_model_selection(log_evidences, tol=1e-12, max_iter=50000)
-    # print(task_1_wide.columns)
-    # print(alpha_est)
+
+    # ------------------------------------------------------------------------------------------------------------------
+    # Model comparison
+    # ------------------------------------------------------------------------------------------------------------------
+    comparison_models = [
+        'delta', 'delta_PVL_relative', 'delta_asymmetric', 'decay', 'decay_PVL_relative',
+        'decay_PVPE', 'decay_win', 'WSLS_avg', 'WSLS_delta', 'kalman_filter',
+        'kalman_decay', 'kalman_filter_bonus', 'kalman_decay_bonus'
+    ]
+    comparison_sets = {'E1 Task 1': '1st', 'E1 Task 2': '2nd', 'E2': 'E2'}
+    comparison_results = []
+    np.random.seed(20260813)
+
+    for comparison_set, task_name in comparison_sets.items():
+        task_results = all_model_results[
+            (all_model_results['Task'] == task_name)
+            & (all_model_results['Model'].isin(comparison_models))
+        ].copy()
+        bic_wide = task_results.pivot(index='Subnum', columns='Model', values='BIC').reindex(
+            columns=comparison_models
+        )
+        if bic_wide.isna().any().any():
+            raise ValueError(f'{comparison_set} does not have complete BIC results for all 13 models.')
+
+        mean_bic = bic_wide.mean()
+        best_model = mean_bic.idxmin()
+        best_model_results = bic_wide[[best_model]].rename(columns={best_model: 'BIC'})
+        n_best_fit = bic_wide.idxmin(axis=1).value_counts()
+        bic_weight = BIC_weights(mean_bic.to_numpy())
+
+        log_evidences = bic_wide.to_numpy() / (-2)
+        alpha, g = vb_model_selection(log_evidences, tol=1e-12, max_iter=50000)
+        model_frequency = alpha / np.sum(alpha)
+        exceedance_probability = compute_exceedance_prob(alpha, n_samples=100000)
+
+        for model_index, model in enumerate(comparison_models):
+            current_model_results = bic_wide[[model]].rename(columns={model: 'BIC'})
+            comparison_results.append({
+                'Comparison Set': comparison_set,
+                'Model': model,
+                'N Participants': len(bic_wide),
+                'Mean BIC': mean_bic[model],
+                'N Best Fit': n_best_fit.get(model, 0),
+                'BIC Weight': bic_weight[model_index],
+                'Bayes Factor': bayes_factor(current_model_results, best_model_results),
+                'VBMS Alpha': alpha[model_index],
+                'VBMS Model Frequency': model_frequency[model_index],
+                'VBMS Exceedance Probability': exceedance_probability[model_index],
+                'Best Model': best_model
+            })
+
+    model_comparison_results = pd.DataFrame(comparison_results)
+    model_comparison_results['N Best Fit'] = model_comparison_results['N Best Fit'].astype(int)
+    model_comparison_results.to_csv('./data/model_comparison_results.csv', index=False)
 
     # Exploration all models
     all_model_results['EV_rank'] = all_model_results['exploitation'].apply(ast.literal_eval)

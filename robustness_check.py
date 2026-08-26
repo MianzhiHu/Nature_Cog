@@ -21,8 +21,10 @@ E2_pairwise = E2_pairwise[
 ].copy()
 
 E2_joint_semantic = E2_joint_semantic[
-    (E2_joint_semantic['model_type'] == 'additive') &
-    E2_joint_semantic['term'].str.endswith('_z') &
+    ((E2_joint_semantic['model_type'] == 'additive') & E2_joint_semantic['term'].str.endswith('_z')) |
+    ((E2_joint_semantic['model_type'] == 'interaction') & E2_joint_semantic['term'].str.endswith('_z:ConditionUrban')
+     ) &
+    (E2_joint_semantic['converged'] == True) &
     (E2_joint_semantic['singular'] == False)
 ].copy()
 
@@ -55,21 +57,10 @@ E2_pairwise['p_value_adjusted'] = multipletests(E2_pairwise['p_value'], method='
 E2_joint_semantic['p_value_adjusted'] = multipletests(E2_joint_semantic['p_value'], method='fdr_bh')[1]
 E2_joint_ratings['p_value_adjusted'] = multipletests(E2_joint_ratings['p_value'], method='fdr_bh')[1]
 E1_trial_rating_effects['p_value_adjusted_all'] = multipletests(E1_trial_rating_effects['p_value'], method='fdr_bh')[1]
-E1_trial_rating_effects['p_value_adjusted_additive'] = float('nan')
-E1_trial_rating_additive_mask = E1_trial_rating_effects['model_type'] == 'additive'
-E1_trial_rating_effects.loc[E1_trial_rating_additive_mask, 'p_value_adjusted_additive'] = multipletests(
-    E1_trial_rating_effects.loc[E1_trial_rating_additive_mask, 'p_value'], method='fdr_bh'
-)[1]
-
 
 # Sort by adjusted p-value
-E1_pairwise = E1_pairwise.sort_values(by='p_value_adjusted', ascending=True)
-E2_pairwise = E2_pairwise.sort_values(by='p_value_adjusted', ascending=True)
 E2_sig = E2_pairwise[E2_pairwise['p_value_adjusted'] < 0.05]
-E2_sig_features = E2_sig['feature'].unique().tolist()
-E1_trial_rating_effects = E1_trial_rating_effects.sort_values(by='p_value_adjusted_all', ascending=True)
-E1_trial_rating_additive = E1_trial_rating_effects[E1_trial_rating_effects['model_type'] == 'additive'].copy()
-E1_trial_rating_interaction = E1_trial_rating_effects[E1_trial_rating_effects['model_type'] == 'interaction'].copy()
 E1_trial_rating_all_sig = E1_trial_rating_effects[E1_trial_rating_effects['p_value_adjusted_all'] < 0.05]
-E1_trial_rating_additive_sig = E1_trial_rating_additive[E1_trial_rating_additive['p_value_adjusted_additive'] < 0.05]
+E1_trial_rating_additive_sig = E1_trial_rating_all_sig[E1_trial_rating_all_sig['model_type'] == 'additive']
+E1_trial_rating_interaction_sig = E1_trial_rating_all_sig[E1_trial_rating_all_sig['model_type'] == 'interaction']
 
